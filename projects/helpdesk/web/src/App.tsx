@@ -60,7 +60,7 @@ function Layout({ children }: { children: React.ReactNode }) {
                   <Sparkles className="h-5 w-5 text-white" />
                 </div>
                 <span className="text-xl font-bold bg-gradient-to-r from-violet-600 to-purple-600 bg-clip-text text-transparent">
-                  Helpdesk
+                  ForgeDesk
                 </span>
               </Link>
 
@@ -101,7 +101,7 @@ function Layout({ children }: { children: React.ReactNode }) {
             </a>
             <div className="flex items-center gap-1">
               <Ticket className="h-4 w-4" />
-              <span>Helpdesk v0.1.0</span>
+              <span>ForgeDesk v0.1.0</span>
             </div>
           </div>
         </div>
