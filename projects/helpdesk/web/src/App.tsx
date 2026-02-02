@@ -12,9 +12,12 @@ import {
   Sparkles,
 } from "lucide-react";
 
+// Default dev token: {"sub":"11111111-1111-1111-1111-111111111111"} in base64
+const DEFAULT_DEV_TOKEN = "eyJzdWIiOiIxMTExMTExMS0xMTExLTExMTEtMTExMS0xMTExMTExMTExMTEifQ";
+
 const forgeConfig = {
   url: import.meta.env.VITE_API_URL || "http://localhost:8080",
-  token: import.meta.env.VITE_API_TOKEN,
+  token: import.meta.env.VITE_API_TOKEN || DEFAULT_DEV_TOKEN,
 };
 
 function NavLink({

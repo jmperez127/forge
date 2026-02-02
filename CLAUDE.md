@@ -126,6 +126,27 @@ forge/
 
 ---
 
+## Bug Handling
+
+When a bug is reported, follow this process:
+
+1. **Don't start by trying to fix the bug.** Resist the urge to immediately jump into the code and attempt a fix.
+
+2. **Document a test plan in markdown.** Before any fix work, write down the repro steps so you don't lose track of them. Include:
+   - Exact steps to reproduce the bug
+   - Commands to run
+   - Expected vs actual behavior
+   - How to verify the fix worked
+
+3. **Write a test that reproduces the bug.** Create a failing test that demonstrates the buggy behavior. This ensures:
+   - We understand the bug correctly
+   - We have a reliable way to verify the fix
+   - We prevent regressions in the future
+
+4. **Use subagents to fix the bug.** Once the failing test exists, spawn subagents to attempt the fix and prove it works by getting the test to pass.
+
+---
+
 ## Key Patterns
 
 ### Compiler Pattern: Pipeline with Diagnostics

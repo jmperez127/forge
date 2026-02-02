@@ -617,6 +617,21 @@ func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 	// Execute action based on name
 	switch actionName {
 	case "create_ticket":
+		// Auto-populate author_id from authenticated user
+		userID := getUserID(r)
+		if userID != "" {
+			input["author_id"] = userID
+		}
+		// For now, use a default org and tag if not provided (TODO: proper org resolution)
+		if _, ok := input["org_id"]; !ok {
+			input["org_id"] = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" // Default test org
+		}
+		if _, ok := input["tags_id"]; !ok {
+			input["tags_id"] = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb" // Default test tag
+		}
+		if _, ok := input["assignee_id"]; !ok {
+			input["assignee_id"] = userID // Self-assign by default
+		}
 		s.executeCreateAction(ctx, w, database, entity, input)
 	case "close_ticket":
 		s.executeUpdateAction(ctx, w, database, entity, input, map[string]interface{}{"status": "closed"})
@@ -634,6 +649,11 @@ func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 	case "escalate_ticket":
 		s.executeUpdateAction(ctx, w, database, entity, input, map[string]interface{}{"priority": "urgent"})
 	case "add_comment":
+		// Auto-populate author_id from authenticated user
+		userID := getUserID(r)
+		if userID != "" {
+			input["author_id"] = userID
+		}
 		s.executeCreateAction(ctx, w, database, entity, input)
 	default:
 		// Generic action - just acknowledge

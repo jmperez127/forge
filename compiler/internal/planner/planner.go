@@ -389,7 +389,7 @@ func (p *Planner) planMigration(plan *Plan) {
 				Name:    fmt.Sprintf("idx_%s_%s_id", tableName, rel.Name),
 				Table:   tableName,
 				Columns: []string{fmt.Sprintf("%s_id", rel.Name)},
-				Unique:  !rel.IsMany,
+				Unique:  false, // FK indexes are never unique - many records can reference the same target
 			})
 		}
 	}
