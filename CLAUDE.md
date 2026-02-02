@@ -81,7 +81,13 @@ forge/
 ├── projects/                  # Real test applications
 │   └── helpdesk/              # Example: Ticket system
 │
-└── e2e/                       # End-to-end tests
+└── e2e/                       # End-to-end tests (Playwright)
+    ├── tests/                 # Test specs
+    │   ├── smoke.spec.ts      # Basic connectivity
+    │   └── helpdesk.spec.ts   # Full user flows
+    └── fixtures/              # Test utilities
+        ├── auth.ts            # Authentication helpers
+        └── db.ts              # Database helpers
 ```
 
 ---
@@ -104,6 +110,7 @@ forge/
 - **Table-driven tests** (Go idiom)
 - **Integration tests** with real Postgres (testcontainers)
 - **Snapshot tests** for AST/artifact stability
+- **E2E tests** with Playwright (`e2e/`)
 - **Real apps** in `projects/` folder
 - Coverage targets: 80%+ statements, 75%+ branches
 
@@ -247,12 +254,26 @@ go tool cover -html=coverage.out
 
 ### SDK Development
 ```bash
-# Install SDK dependencies
-cd sdk/typescript/client && npm install
-cd sdk/typescript/react && npm install
+# Install all dependencies (from root)
+npm install
 
 # Build SDKs
-npm run build
+npm run build:sdk
+```
+
+### E2E Testing
+```bash
+# Run all E2E tests
+npm run e2e
+
+# Run E2E with UI
+npm run e2e:ui
+
+# Run specific test file
+cd e2e && npx playwright test tests/smoke.spec.ts
+
+# Run in debug mode
+cd e2e && npx playwright test --debug
 ```
 
 ---
@@ -403,6 +424,7 @@ test Ticket.update {
 | Jobs | Asynq | Redis-backed, reliable |
 | Frontend SDK | TypeScript | Type-safe generated client |
 | React Hooks | @forge/react | useList, useAction |
+| E2E Testing | Playwright | Browser automation |
 
 ---
 

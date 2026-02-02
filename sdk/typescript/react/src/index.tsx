@@ -265,7 +265,7 @@ export interface OptimisticMutationOptions<T, TInput> {
   rollback: (current: T[], input: TInput) => T[];
 }
 
-export function useOptimisticMutation<T, TInput>(
+export function useOptimisticMutation<T, TInput extends Record<string, unknown>>(
   actionName: string,
   listHook: UseQueryResult<T[]>,
   options: OptimisticMutationOptions<T, TInput>

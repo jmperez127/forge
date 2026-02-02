@@ -1,0 +1,20 @@
+{
+  "name": "forge",
+  "private": true,
+  "workspaces": [
+    "sdk/typescript/client",
+    "sdk/typescript/react",
+    "projects/helpdesk/web",
+    "e2e"
+  ],
+  "scripts": {
+    "build:sdk": "npm run build --workspace=@forge/client && npm run build --workspace=@forge/react",
+    "dev:helpdesk": "npm run dev --workspace=helpdesk-web",
+    "e2e": "npm run e2e --workspace=forge-e2e",
+    "e2e:ui": "npm run e2e:ui --workspace=forge-e2e"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
