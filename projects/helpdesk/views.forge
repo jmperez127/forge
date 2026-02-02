@@ -1,0 +1,37 @@
+# Helpdesk Views
+# Frontend projections (queryable and subscribable)
+
+view TicketList {
+  source: Ticket
+  fields: subject, status, priority, author.name, assignee.name
+}
+
+view TicketDetail {
+  source: Ticket
+  fields: subject, description, status, priority, author, assignee, tags
+}
+
+view OrganizationTickets {
+  source: Ticket
+  fields: subject, status, priority, created_at
+}
+
+view AgentDashboard {
+  source: Ticket
+  fields: subject, status, priority, org.name, author.name
+}
+
+view CommentThread {
+  source: Comment
+  fields: body, author.name, internal, created_at
+}
+
+view UserProfile {
+  source: User
+  fields: email, name, role, avatar_url
+}
+
+view OrganizationMembers {
+  source: User
+  fields: email, name, role
+}

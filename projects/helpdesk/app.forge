@@ -1,0 +1,8 @@
+# FORGE Helpdesk Application
+# A complete helpdesk/ticketing system example
+
+app Helpdesk {
+  auth: oauth
+  database: postgres
+  frontend: web
+}

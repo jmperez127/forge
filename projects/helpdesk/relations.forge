@@ -1,0 +1,18 @@
+# Helpdesk Relations
+# Define how entities are connected
+
+# Organization members
+relation Organization.members -> User many
+relation Organization.owner -> User
+
+# Tickets belong to org and have author/assignee
+relation Ticket.org -> Organization
+relation Ticket.author -> User
+relation Ticket.assignee -> User
+
+# Comments belong to ticket and have author
+relation Comment.ticket -> Ticket
+relation Comment.author -> User
+
+# Ticket tags (many-to-many)
+relation Ticket.tags -> Tag many

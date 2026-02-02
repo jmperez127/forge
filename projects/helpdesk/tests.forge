@@ -1,0 +1,32 @@
+# Helpdesk Tests
+# Invariant tests (not behavior tests)
+
+test Ticket.update {
+  given status = closed
+  when update Ticket
+  expect reject TICKET_CLOSED
+}
+
+test Ticket.update {
+  given status = open
+  when update Ticket
+  expect Ticket.status = pending
+}
+
+test close_ticket {
+  given Ticket.status = open
+  when action close_ticket
+  expect Ticket.status = closed
+}
+
+test reopen_ticket {
+  given Ticket.status = closed
+  when action reopen_ticket
+  expect Ticket.status = open
+}
+
+test Comment.create {
+  given body = ""
+  when create Comment
+  expect reject COMMENT_EMPTY
+}

@@ -1,0 +1,22 @@
+# Helpdesk Business Rules
+# Define invariants and forbidden transitions
+
+rule Ticket.update {
+  forbid if status == closed
+    emit TICKET_CLOSED
+}
+
+rule Ticket.delete {
+  forbid if status != closed
+    emit TICKET_NOT_CLOSED
+}
+
+rule Comment.create {
+  require if body length >= 1
+    emit COMMENT_EMPTY
+}
+
+rule Comment.update {
+  forbid if author != user
+    emit NOT_AUTHOR
+}

@@ -1,0 +1,32 @@
+# Helpdesk Entities
+# Define the data model for the helpdesk system
+
+entity User {
+  email: string unique
+  name: string
+  role: enum(admin, agent, customer) = customer
+  avatar_url: string
+}
+
+entity Organization {
+  name: string
+  slug: string unique
+  plan: enum(free, pro, enterprise) = free
+}
+
+entity Ticket {
+  subject: string length <= 120
+  description: string
+  status: enum(open, pending, in_progress, resolved, closed) = open
+  priority: enum(low, medium, high, urgent) = medium
+}
+
+entity Comment {
+  body: string
+  internal: bool = false
+}
+
+entity Tag {
+  name: string unique
+  color: string
+}

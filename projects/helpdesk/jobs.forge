@@ -1,0 +1,20 @@
+# Helpdesk Jobs
+# Deferred effects (run after commit)
+
+job notify_agents {
+  input: Ticket
+  needs: Ticket.org.members where role == agent
+  effect: email.send
+}
+
+job notify_author {
+  input: Ticket
+  needs: Ticket.author
+  effect: email.send
+}
+
+job notify_ticket_participants {
+  input: Comment
+  needs: Comment.ticket.org.members
+  effect: email.send
+}

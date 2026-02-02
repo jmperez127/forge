@@ -1,0 +1,37 @@
+# Helpdesk Messages
+# Structured outcomes for errors and notifications
+
+message TICKET_CLOSED {
+  level: error
+  default: "This ticket is already closed and cannot be modified."
+}
+
+message TICKET_NOT_CLOSED {
+  level: error
+  default: "Only closed tickets can be deleted."
+}
+
+message COMMENT_EMPTY {
+  level: error
+  default: "Comment body cannot be empty."
+}
+
+message NOT_AUTHOR {
+  level: error
+  default: "Only the author can edit this comment."
+}
+
+message TICKET_CREATED {
+  level: info
+  default: "Your ticket has been created successfully."
+}
+
+message TICKET_ASSIGNED {
+  level: info
+  default: "The ticket has been assigned."
+}
+
+message TICKET_ESCALATED {
+  level: warning
+  default: "This ticket has been escalated to priority urgent."
+}

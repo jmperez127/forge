@@ -1,0 +1,26 @@
+# Helpdesk Actions
+# Named, typed transactions
+
+action create_ticket {
+  input: Ticket
+}
+
+action close_ticket {
+  input: Ticket
+}
+
+action reopen_ticket {
+  input: Ticket
+}
+
+action assign_ticket {
+  input: Ticket
+}
+
+action add_comment {
+  input: Comment
+}
+
+action escalate_ticket {
+  input: Ticket
+}

@@ -1,0 +1,22 @@
+# Helpdesk Access Control
+# Define who can read and write entities
+
+access User {
+  read: user.role == admin or user.id == id
+  write: user.role == admin or user.id == id
+}
+
+access Organization {
+  read: user in members or user == owner
+  write: user == owner or user.role == admin
+}
+
+access Ticket {
+  read: user in org.members
+  write: user == author or user == assignee or user.role == agent
+}
+
+access Comment {
+  read: user in ticket.org.members
+  write: user == author or user.role == agent
+}

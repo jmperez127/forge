@@ -1,0 +1,14 @@
+# Helpdesk Hooks
+# Bind actions to effects
+
+hook Ticket.after_create {
+  enqueue notify_agents
+}
+
+hook Ticket.after_update {
+  enqueue notify_author
+}
+
+hook Comment.after_create {
+  enqueue notify_ticket_participants
+}
