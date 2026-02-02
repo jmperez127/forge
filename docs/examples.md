@@ -324,102 +324,180 @@ test Comment.create {
 }
 ```
 
-### Frontend (React)
+### Frontend (React + shadcn/ui)
+
+The helpdesk frontend uses React with shadcn/ui components, Tailwind CSS, and Lucide icons for a modern, polished UI.
+
+**Tech Stack:**
+- React 18 + TypeScript
+- shadcn/ui (Radix UI primitives + Tailwind)
+- Lucide React icons
+- React Router DOM
+- Vite
 
 ```tsx
 // App.tsx
-import { ForgeProvider } from './forge/react';
-import { TicketListPage } from './pages/TicketListPage';
-import { TicketDetailPage } from './pages/TicketDetailPage';
+import { ForgeProvider } from '@forge/react';
+import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { Sparkles, Inbox, Plus } from 'lucide-react';
 
-const config = {
+const forgeConfig = {
   url: import.meta.env.VITE_API_URL || 'http://localhost:8080',
+  token: import.meta.env.VITE_API_TOKEN,
 };
 
-export function App() {
+export default function App() {
   return (
-    <ForgeProvider config={config}>
-      <Router>
-        <Routes>
-          <Route path="/" element={<TicketListPage />} />
-          <Route path="/tickets/:id" element={<TicketDetailPage />} />
-        </Routes>
-      </Router>
+    <ForgeProvider config={forgeConfig}>
+      <BrowserRouter>
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-violet-50">
+          <header className="sticky top-0 border-b bg-white/80 backdrop-blur-lg">
+            <nav className="mx-auto max-w-6xl flex items-center gap-8 px-4 h-16">
+              <Link to="/" className="flex items-center gap-2">
+                <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
+                  <Sparkles className="h-5 w-5 text-white" />
+                </div>
+                <span className="text-xl font-bold text-violet-600">Helpdesk</span>
+              </Link>
+              <Button variant="ghost" asChild><Link to="/"><Inbox className="h-4 w-4 mr-2" />Tickets</Link></Button>
+              <Button variant="ghost" asChild><Link to="/new"><Plus className="h-4 w-4 mr-2" />New Ticket</Link></Button>
+            </nav>
+          </header>
+          <main className="mx-auto max-w-6xl px-4 py-8">
+            <Routes>
+              <Route path="/" element={<TicketList />} />
+              <Route path="/tickets/:id" element={<TicketDetail />} />
+              <Route path="/new" element={<NewTicket />} />
+            </Routes>
+          </main>
+        </div>
+      </BrowserRouter>
     </ForgeProvider>
   );
 }
 ```
 
 ```tsx
-// pages/TicketListPage.tsx
-import { useList, useAction } from '../forge/react';
-import { TicketListItem } from '../forge/types';
+// pages/TicketList.tsx
+import { useList } from '@forge/react';
+import { Link } from 'react-router-dom';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Plus, Clock, User, ChevronRight, Flame, AlertTriangle } from 'lucide-react';
 
-export function TicketListPage() {
-  const { data: tickets, loading, error } = useList<TicketListItem>('TicketList');
-  const createTicket = useAction('create_ticket');
+export function TicketList() {
+  const { data: tickets, loading, error } = useList<Ticket>('TicketList');
 
-  if (loading) return <Loading />;
-  if (error) return <Error message={error.message} />;
+  if (loading) return <LoadingSpinner />;
+  if (error) return <ErrorCard message="Failed to load tickets" />;
+  if (!tickets?.length) return <EmptyState />;
 
   return (
-    <div className="ticket-list">
-      <h1>Tickets</h1>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Support Tickets</h1>
+          <p className="text-muted-foreground">{tickets.length} tickets in queue</p>
+        </div>
+        <Link to="/new">
+          <Button className="gap-2 bg-gradient-to-r from-violet-600 to-purple-600">
+            <Plus className="h-4 w-4" /> New Ticket
+          </Button>
+        </Link>
+      </div>
 
-      <CreateTicketForm onSubmit={createTicket.execute} />
-
-      <ul>
-        {tickets.map(ticket => (
-          <TicketCard key={ticket.id} ticket={ticket} />
+      <div className="grid gap-3">
+        {tickets.map((ticket) => (
+          <Link key={ticket.id} to={`/tickets/${ticket.id}`}>
+            <Card className="group hover:shadow-md hover:border-violet-200 transition-all">
+              <CardContent className="flex items-center gap-4 p-4">
+                <PriorityIcon priority={ticket.priority} />
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-medium truncate group-hover:text-violet-700">
+                    {ticket.subject}
+                  </h3>
+                  <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                    <span><User className="h-3.5 w-3.5 inline" /> {ticket.author?.name}</span>
+                    <span><Clock className="h-3.5 w-3.5 inline" /> {formatDate(ticket.created_at)}</span>
+                  </div>
+                </div>
+                <Badge variant={getStatusVariant(ticket.status)}>{ticket.status}</Badge>
+                <ChevronRight className="h-5 w-5 text-muted-foreground/50" />
+              </CardContent>
+            </Card>
+          </Link>
         ))}
-      </ul>
+      </div>
     </div>
   );
 }
 ```
 
 ```tsx
-// pages/TicketDetailPage.tsx
-import { useParams } from 'react-router-dom';
-import { useEntity, useAction } from '../forge/react';
+// pages/TicketDetail.tsx
+import { useParams, Link } from 'react-router-dom';
+import { useEntity, useList, useAction } from '@forge/react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogTrigger } from '@/components/ui/dialog';
 
-export function TicketDetailPage() {
+export function TicketDetail() {
   const { id } = useParams<{ id: string }>();
-  const { data: ticket, loading } = useEntity('Ticket', id);
+  const { data: ticket, loading } = useEntity<Ticket>('Ticket', id!);
+  const { data: comments } = useList<Comment>('CommentThread');
   const closeTicket = useAction('close_ticket');
   const addComment = useAction('add_comment');
 
-  if (loading) return <Loading />;
+  if (loading) return <LoadingSpinner />;
   if (!ticket) return <NotFound />;
 
   return (
-    <div className="ticket-detail">
-      <header>
-        <h1>{ticket.subject}</h1>
-        <StatusBadge status={ticket.status} />
+    <div className="space-y-6">
+      <header className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">{ticket.subject}</h1>
+          <p className="text-muted-foreground">Created by {ticket.author?.name}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge variant={getStatusVariant(ticket.status)}>{ticket.status}</Badge>
+          {ticket.status !== 'closed' && (
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="outline">Close Ticket</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <p>Are you sure you want to close this ticket?</p>
+                <Button onClick={() => closeTicket.execute({ ticket: ticket.id })}>
+                  Confirm
+                </Button>
+              </DialogContent>
+            </Dialog>
+          )}
+        </div>
       </header>
 
-      <p>{ticket.description}</p>
+      <Card>
+        <CardHeader><CardTitle>Description</CardTitle></CardHeader>
+        <CardContent><p>{ticket.description}</p></CardContent>
+      </Card>
 
-      <section className="actions">
-        {ticket.status !== 'closed' && (
-          <button onClick={() => closeTicket.execute({ id: ticket.id })}>
-            Close Ticket
-          </button>
-        )}
-      </section>
-
-      <section className="comments">
-        <h2>Comments</h2>
-        {ticket.comments.map(comment => (
-          <CommentCard key={comment.id} comment={comment} />
-        ))}
-
-        <CommentForm onSubmit={(body) => addComment.execute({
-          ticket_id: ticket.id,
-          body,
-        })} />
-      </section>
+      <Card>
+        <CardHeader><CardTitle>Comments ({comments?.length || 0})</CardTitle></CardHeader>
+        <CardContent>
+          {comments?.map(comment => (
+            <CommentCard key={comment.id} comment={comment} />
+          ))}
+          {ticket.status !== 'closed' && (
+            <CommentForm onSubmit={(body, internal) =>
+              addComment.execute({ ticket: ticket.id, body, internal })
+            } />
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

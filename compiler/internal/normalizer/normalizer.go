@@ -530,6 +530,11 @@ func (n *Normalizer) exprToSQL(expr ast.Expr) string {
 		if e.Name == "user" {
 			return "current_setting('app.user_id')::uuid"
 		}
+		// Check if this is a relation name that should reference a FK column
+		// Common relation names that point to User entities
+		if isRelationToUser(e.Name) {
+			return e.Name + "_id"
+		}
 		return e.Name
 
 	case *ast.PathExpr:
@@ -557,7 +562,9 @@ func (n *Normalizer) exprToSQL(expr ast.Expr) string {
 
 	case *ast.BinaryExpr:
 		left := n.exprToSQL(e.Left)
-		right := n.exprToSQL(e.Right)
+		// For equality comparisons, the right side might be an enum literal
+		// that needs to be quoted (depends on context from left side)
+		right := n.exprToSQLValue(e.Right, e.Op, e.Left)
 		op := n.tokenToSQLOp(e.Op)
 		return fmt.Sprintf("(%s %s %s)", left, op, right)
 
@@ -568,15 +575,146 @@ func (n *Normalizer) exprToSQL(expr ast.Expr) string {
 
 	case *ast.InExpr:
 		left := n.exprToSQL(e.Left)
-		right := n.exprToSQL(e.Right)
-		// For "user in org.members" style, generate subquery
-		return fmt.Sprintf("%s IN (SELECT user_id FROM %s)", left, right)
+		// Handle "user in org.members" style expressions
+		// This generates a subquery to check membership
+		return n.inExprToSQL(left, e.Right)
 
 	case *ast.ParenExpr:
 		return fmt.Sprintf("(%s)", n.exprToSQL(e.Inner))
 
 	default:
 		return ""
+	}
+}
+
+// inExprToSQL handles "user in path.relation" expressions.
+// Examples:
+//   - "user in members" -> user is in this entity's members
+//   - "user in org.members" -> user is in the org's members (for Ticket context)
+//   - "user in ticket.org.members" -> user is in the ticket's org's members (for Comment context)
+func (n *Normalizer) inExprToSQL(left string, right ast.Expr) string {
+	switch e := right.(type) {
+	case *ast.PathExpr:
+		parts := make([]string, len(e.Parts))
+		for i, p := range e.Parts {
+			parts[i] = p.Name
+		}
+
+		// Build nested subquery for path traversal
+		// For "org.members": SELECT members_id FROM organizations WHERE id = org_id
+		// For "ticket.org.members": SELECT members_id FROM organizations WHERE id = (SELECT org_id FROM tickets WHERE id = ticket_id)
+		return n.buildMembershipQuery(left, parts)
+
+	case *ast.Ident:
+		// Simple identifier like "members" - reference the FK column directly
+		// This means "user is one of this entity's members"
+		return fmt.Sprintf("(%s = %s_id)", left, e.Name)
+
+	default:
+		// Fallback
+		rightSQL := n.exprToSQL(right)
+		return fmt.Sprintf("(%s IN (SELECT id FROM %s))", left, rightSQL)
+	}
+}
+
+// buildMembershipQuery builds a SQL subquery for checking membership along a relation path.
+func (n *Normalizer) buildMembershipQuery(userExpr string, path []string) string {
+	if len(path) == 0 {
+		return "FALSE"
+	}
+
+	// The last part is the relation we're checking membership in (e.g., "members")
+	// The preceding parts are the path to traverse
+	memberRelation := path[len(path)-1]
+	entityPath := path[:len(path)-1]
+
+	if len(entityPath) == 0 {
+		// Just "members" - check against members_id column directly
+		return fmt.Sprintf("(%s = %s_id)", userExpr, memberRelation)
+	}
+
+	// Build the nested subquery
+	// For "org.members": find org via org_id, then check members_id
+	// For "ticket.org.members": find ticket via ticket_id, get org_id, then check members_id
+
+	// Start from the innermost entity and work outward
+	// The innermost is the first in the path (e.g., "org" or "ticket")
+	fkColumn := fmt.Sprintf("%s_id", entityPath[0])
+
+	if len(entityPath) == 1 {
+		// Single hop: "org.members"
+		// SQL: user IN (SELECT members_id FROM organizations WHERE id = org_id)
+		table := n.tableName(entityPath[0])
+		return fmt.Sprintf("(%s IN (SELECT %s_id FROM %s WHERE id = %s))",
+			userExpr, memberRelation, table, fkColumn)
+	}
+
+	// Multi-hop: "ticket.org.members"
+	// Build nested subqueries from inside out
+	// SQL: user IN (SELECT members_id FROM organizations WHERE id = (SELECT org_id FROM tickets WHERE id = ticket_id))
+	innerQuery := fkColumn
+	for i := 1; i < len(entityPath); i++ {
+		prevTable := n.tableName(entityPath[i-1])
+		nextFK := fmt.Sprintf("%s_id", entityPath[i])
+		innerQuery = fmt.Sprintf("(SELECT %s FROM %s WHERE id = %s)", nextFK, prevTable, innerQuery)
+	}
+
+	// Final query: check membership in the target relation
+	lastTable := n.tableName(entityPath[len(entityPath)-1])
+	return fmt.Sprintf("(%s IN (SELECT %s_id FROM %s WHERE id = %s))",
+		userExpr, memberRelation, lastTable, innerQuery)
+}
+
+// tableName converts an entity/relation name to its table name.
+// e.g., "org" -> "organizations", "ticket" -> "tickets"
+func (n *Normalizer) tableName(name string) string {
+	// Handle common abbreviations
+	switch name {
+	case "org":
+		return "organizations"
+	default:
+		// Simple pluralization
+		return name + "s"
+	}
+}
+
+// isRelationToUser checks if an identifier is a common relation name that points to a User.
+// These should be converted to FK column references (e.g., "author" -> "author_id").
+func isRelationToUser(name string) bool {
+	switch name {
+	case "author", "owner", "assignee", "reporter", "creator", "updater":
+		return true
+	default:
+		return false
+	}
+}
+
+// exprToSQLValue converts an expression to SQL, with context about whether
+// the right side should be treated as an enum literal or column reference.
+func (n *Normalizer) exprToSQLValue(expr ast.Expr, op token.Type, leftExpr ast.Expr) string {
+	// Only apply special handling for equality comparisons
+	if op != token.EQ && op != token.NEQ {
+		return n.exprToSQL(expr)
+	}
+
+	switch e := expr.(type) {
+	case *ast.Ident:
+		// Reserved words that shouldn't be quoted
+		if e.Name == "user" || e.Name == "id" || e.Name == "true" || e.Name == "false" {
+			return n.exprToSQL(expr)
+		}
+
+		// If left side is a path expression (like user.role), right is likely an enum
+		// If left side is just "user", right is likely a column reference
+		if _, isPath := leftExpr.(*ast.PathExpr); isPath {
+			// PathExpr like user.role - right side is an enum value
+			return fmt.Sprintf("'%s'", e.Name)
+		}
+
+		// Left side is plain identifier (user) - right side is column reference
+		return n.exprToSQL(expr)
+	default:
+		return n.exprToSQL(expr)
 	}
 }
 

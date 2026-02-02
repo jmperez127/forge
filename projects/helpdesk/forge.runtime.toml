@@ -1,0 +1,89 @@
+# FORGE Runtime Configuration
+#
+# This file configures the RUNTIME, not the application spec.
+# The .forge spec never sees secrets - that separation is non-negotiable.
+#
+# Values prefixed with "env:" are read from environment variables.
+# Example: url = "env:DATABASE_URL" reads from $DATABASE_URL
+
+# =============================================================================
+# Database Configuration
+# =============================================================================
+[database]
+# Adapter options: "embedded", "postgres", "postgres:sharded"
+# Default: "embedded" for zero-config development
+adapter = "embedded"
+
+[database.embedded]
+# Where embedded PostgreSQL stores data
+data_dir = ".forge-runtime/data"
+port = 5432
+
+[database.postgres]
+# Connection URL (used when adapter = "postgres")
+# Use "env:" prefix to read from environment variable
+url = "env:DATABASE_URL"
+pool_size = 20
+ssl_mode = "prefer"
+
+# =============================================================================
+# Email Configuration
+# =============================================================================
+[email]
+provider = "smtp"
+host = "env:SMTP_HOST"
+port = 587
+user = "env:SMTP_USER"
+password = "env:SMTP_PASS"
+from = "noreply@helpdesk.example.com"
+
+# =============================================================================
+# Jobs Configuration (Background Processing)
+# =============================================================================
+[jobs]
+# Backend options: "redis", "postgres", "memory"
+backend = "memory"
+concurrency = 10
+
+# =============================================================================
+# Authentication Configuration
+# =============================================================================
+[auth]
+provider = "jwt"
+
+[auth.jwt]
+secret = "env:JWT_SECRET"
+issuer = "helpdesk"
+expiry_hours = 24
+
+# =============================================================================
+# Environment-Specific Overrides
+# =============================================================================
+
+# Development environment (default)
+[environments.development]
+# Uses embedded PostgreSQL by default - no configuration needed
+
+# Test environment
+[environments.test]
+[environments.test.database]
+adapter = "embedded"
+[environments.test.database.embedded]
+ephemeral = true  # Auto-cleanup after tests
+
+[environments.test.jobs]
+backend = "memory"  # In-memory jobs for tests
+
+# Production environment
+[environments.production]
+[environments.production.database]
+adapter = "postgres"
+[environments.production.database.postgres]
+url = "env:DATABASE_URL"
+pool_size = 50
+ssl_mode = "require"
+
+[environments.production.jobs]
+backend = "redis"
+url = "env:REDIS_URL"
+concurrency = 20

@@ -9,33 +9,274 @@ The FORGE runtime is a **sealed execution environment** that:
 - Enforces all rules and access control at the database level
 - Provides HTTP and WebSocket APIs
 - Executes background jobs
+- **Auto-migrates** the database schema from the artifact
 
 The runtime **cannot be bypassed** - all data access goes through compiled rules.
 
+---
+
+## Configuration: `forge.runtime.toml`
+
+> **Key principle:** Configuration belongs to the runtime, NOT the spec. The `.forge` spec never sees secrets.
+
+All runtime configuration lives in `forge.runtime.toml` at the project root:
+
+```toml
+# forge.runtime.toml
+
+[database]
+# Adapter options: "embedded", "postgres", "postgres:sharded"
+adapter = "embedded"
+
+[database.embedded]
+data_dir = ".forge-runtime/data"
+port = 5432
+
+[database.postgres]
+url = "env:DATABASE_URL"   # Use "env:" prefix to read from environment
+pool_size = 20
+ssl_mode = "prefer"
+
+[email]
+provider = "smtp"
+host = "env:SMTP_HOST"
+user = "env:SMTP_USER"
+password = "env:SMTP_PASS"
+
+[jobs]
+backend = "redis"
+url = "env:REDIS_URL"
+concurrency = 10
+
+[auth]
+provider = "jwt"
+[auth.jwt]
+secret = "env:JWT_SECRET"
+expiry_hours = 24
+
+# Environment-specific overrides
+[environments.test]
+[environments.test.database]
+adapter = "embedded"
+[environments.test.database.embedded]
+ephemeral = true  # Auto-cleanup after tests
+
+[environments.production]
+[environments.production.database]
+adapter = "postgres"
+[environments.production.database.postgres]
+url = "env:DATABASE_URL"
+pool_size = 50
+```
+
+### The `env:` Prefix
+
+Values prefixed with `env:` are read from environment variables at startup:
+- `url = "env:DATABASE_URL"` → reads `$DATABASE_URL`
+- `secret = "env:JWT_SECRET"` → reads `$JWT_SECRET`
+
+This keeps secrets out of config files while maintaining declarative configuration.
+
+### Environment Overrides
+
+Set `FORGE_ENV` to select environment-specific configuration:
+
+```bash
+FORGE_ENV=production forge-runtime  # Uses [environments.production]
+FORGE_ENV=test forge-runtime        # Uses [environments.test]
+```
+
+Default is `development` if `FORGE_ENV` is not set.
+
+---
+
+## Database Modes
+
+FORGE supports three database modes, configured via `[database]` in `forge.runtime.toml`.
+
+### Mode 1: Embedded (Zero-Config Development)
+
+```toml
+[database]
+adapter = "embedded"
+
+[database.embedded]
+data_dir = ".forge-runtime/data"
+port = 5432
+```
+
+- **Zero external dependencies** - PostgreSQL is embedded in the runtime
+- Auto-downloads PostgreSQL binary on first run
+- Data persists in `data_dir` between runs
+- Perfect for: local development, CI, quick prototyping
+
+**Usage:**
+```bash
+forge run  # Just works, no database setup needed
+```
+
+### Mode 2: External PostgreSQL (Production)
+
+```toml
+[database]
+adapter = "postgres"
+
+[database.postgres]
+url = "env:DATABASE_URL"
+pool_size = 20
+ssl_mode = "require"
+```
+
+- Connects to external PostgreSQL (RDS, Cloud SQL, Supabase, etc.)
+- Full connection pooling
+- Perfect for: production, staging
+
+**Usage:**
+```bash
+DATABASE_URL="postgres://user:pass@host:5432/db" forge-runtime
+```
+
+### Mode 3: Sharded PostgreSQL (Scale)
+
+```toml
+[database]
+adapter = "postgres:sharded"
+
+[database.sharded]
+shard_key = "org_id"
+shards = [
+    { name = "shard_0", url = "env:SHARD_0_URL", range = [0, 127] },
+    { name = "shard_1", url = "env:SHARD_1_URL", range = [128, 255] },
+]
+allow_cross_shard = ["AdminDashboard", "Reports"]
+```
+
+- Multi-tenant sharding by `shard_key`
+- Runtime routes queries to correct shard automatically
+- Cross-shard queries for allowed views
+- Perfect for: high-scale multi-tenant applications
+
+---
+
+## Database Migrations
+
+> **Philosophy:** "You never write migrations" - FORGE computes schema from your spec.
+
+### How Migration Works
+
+1. **Compiler generates schema** - When you run `forge build`, the compiler generates SQL schema in the artifact
+2. **Runtime applies on startup** - The runtime auto-applies the schema when it starts
+3. **Safe by default** - Only safe changes are auto-applied; dangerous changes require acknowledgment
+
+### Migration Flow
+
+```
+.forge files → forge build → artifact.json (contains migration SQL)
+                                    ↓
+                            forge run / forge-runtime
+                                    ↓
+                         Auto-apply schema on startup
+```
+
+### Safe vs Dangerous Changes
+
+**Safe changes (auto-applied):**
+- Add table
+- Add column with default
+- Add nullable column
+- Add index
+- Add enum value (at end)
+
+**Dangerous changes (require `--ack`):**
+- Drop table
+- Drop column
+- Change column type
+- Remove enum value
+
+### Viewing the Migration
+
+The migration SQL is stored in the artifact:
+
+```bash
+# View generated migration
+cat .forge-runtime/artifact.json | jq '.migration'
+
+# Or use the schema.sql file (if generated)
+cat .forge-runtime/schema.sql
+```
+
+### Migration Tracking
+
+The runtime tracks applied migrations in a `_forge_migrations` table:
+
+```sql
+SELECT * FROM _forge_migrations;
+-- version     | applied_at
+-- 001         | 2024-01-01 12:00:00
+```
+
+### Handling Dangerous Changes
+
+If the migration contains dangerous changes, the runtime will refuse to start:
+
+```
+[ERROR] Migration contains dangerous changes:
+  - DROP COLUMN users.legacy_field (drops column and all data)
+
+Run with --ack="DROP COLUMN users.legacy_field" to acknowledge and apply.
+```
+
+Acknowledge with:
+```bash
+forge-runtime --ack="DROP COLUMN users.legacy_field"
+```
+
+---
+
 ## Starting the Runtime
+
+### Using the CLI
 
 ```bash
 forge run
 ```
 
-Or run the runtime binary directly:
+### Using the Binary Directly
 
 ```bash
-DATABASE_URL="postgres://localhost/myapp" forge-runtime
+forge-runtime
 ```
+
+### With Environment Variables
+
+```bash
+FORGE_ENV=production \
+DATABASE_URL="postgres://..." \
+JWT_SECRET="..." \
+forge-runtime
+```
+
+### Command-Line Flags
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-port` | HTTP server port | `8080` |
+| `-artifact` | Path to artifact.json | `.forge-runtime/artifact.json` |
+| `-database` | Override database URL | (from config) |
+| `-log-level` | Log level | `info` |
+| `-project` | Project directory | (parent of artifact) |
 
 ## Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `PORT` | HTTP server port | `8080` |
-| `DATABASE_URL` | PostgreSQL connection string | Required |
-| `REDIS_URL` | Redis connection for job queue | Optional |
+| `FORGE_ENV` | Environment (development, test, production) | `development` |
+| `DATABASE_URL` | PostgreSQL connection string (overrides config) | (from config) |
+| `REDIS_URL` | Redis connection for job queue | (from config) |
 | `LOG_LEVEL` | Logging level (debug, info, warn, error) | `info` |
 | `FORGE_ARTIFACT` | Path to artifact.json | `.forge-runtime/artifact.json` |
-| `CORS_ORIGINS` | Allowed CORS origins (comma-separated) | `*` |
-| `AUTH_SECRET` | JWT signing secret | Required for JWT auth |
-| `OAUTH_PROVIDER` | OAuth provider (google, github, etc.) | Required for OAuth |
+| `JWT_SECRET` | JWT signing secret | (from config) |
 
 ## Request Flow
 

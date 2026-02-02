@@ -9,11 +9,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/forge-lang/forge/runtime/internal/config"
+	"github.com/forge-lang/forge/runtime/internal/db"
 )
 
 // Config holds server configuration.
@@ -23,31 +26,42 @@ type Config struct {
 	DatabaseURL  string
 	RedisURL     string
 	LogLevel     string
+	ProjectDir   string // Project directory containing forge.runtime.toml
 }
 
 // Server is the FORGE runtime server.
 type Server struct {
-	config   *Config
-	artifact *Artifact
-	router   *chi.Mux
-	hub      *Hub
-	logger   *slog.Logger
+	config       *Config
+	runtimeConf  *config.Config
+	artifact     *Artifact
+	db           db.Database
+	router       *chi.Mux
+	hub          *Hub
+	logger       *slog.Logger
 }
 
 // Artifact represents the loaded runtime artifact.
 type Artifact struct {
-	Version  string                    `json:"version"`
-	AppName  string                    `json:"app_name"`
-	Auth     string                    `json:"auth"`
-	Database string                    `json:"database"`
-	Entities map[string]*EntitySchema  `json:"entities"`
-	Actions  map[string]*ActionSchema  `json:"actions"`
-	Rules    []*RuleSchema             `json:"rules"`
-	Access   map[string]*AccessSchema  `json:"access"`
-	Views    map[string]*ViewSchema    `json:"views"`
-	Jobs     map[string]*JobSchema     `json:"jobs"`
-	Hooks    []*HookSchema             `json:"hooks"`
-	Messages map[string]*MessageSchema `json:"messages"`
+	Version   string                    `json:"version"`
+	AppName   string                    `json:"app_name"`
+	Auth      string                    `json:"auth"`
+	Database  string                    `json:"database"`
+	Entities  map[string]*EntitySchema  `json:"entities"`
+	Actions   map[string]*ActionSchema  `json:"actions"`
+	Rules     []*RuleSchema             `json:"rules"`
+	Access    map[string]*AccessSchema  `json:"access"`
+	Views     map[string]*ViewSchema    `json:"views"`
+	Jobs      map[string]*JobSchema     `json:"jobs"`
+	Hooks     []*HookSchema             `json:"hooks"`
+	Messages  map[string]*MessageSchema `json:"messages"`
+	Migration *MigrationSchema          `json:"migration"`
+}
+
+// MigrationSchema represents the database migration.
+type MigrationSchema struct {
+	Version string   `json:"version"`
+	Up      []string `json:"up"`
+	Down    []string `json:"down"`
 }
 
 // EntitySchema represents an entity.
@@ -137,21 +151,10 @@ type MessageSchema struct {
 }
 
 // New creates a new Server.
-func New(config *Config) (*Server, error) {
-	// Load artifact
-	artifactData, err := os.ReadFile(config.ArtifactPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load artifact: %w", err)
-	}
-
-	var artifact Artifact
-	if err := json.Unmarshal(artifactData, &artifact); err != nil {
-		return nil, fmt.Errorf("failed to parse artifact: %w", err)
-	}
-
-	// Setup logger
+func New(cfg *Config) (*Server, error) {
+	// Setup logger first
 	var level slog.Level
-	switch config.LogLevel {
+	switch cfg.LogLevel {
 	case "debug":
 		level = slog.LevelDebug
 	case "info":
@@ -166,12 +169,89 @@ func New(config *Config) (*Server, error) {
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level}))
 
+	// Load artifact
+	artifactData, err := os.ReadFile(cfg.ArtifactPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load artifact: %w", err)
+	}
+
+	var artifact Artifact
+	if err := json.Unmarshal(artifactData, &artifact); err != nil {
+		return nil, fmt.Errorf("failed to parse artifact: %w", err)
+	}
+
+	// Determine project directory from artifact path
+	projectDir := cfg.ProjectDir
+	if projectDir == "" {
+		projectDir = filepath.Dir(filepath.Dir(cfg.ArtifactPath))
+	}
+
+	// Load runtime configuration from forge.runtime.toml
+	runtimeConf, err := config.Load(projectDir)
+	if err != nil {
+		logger.Warn("failed to load forge.runtime.toml, using defaults", "error", err)
+		runtimeConf = config.LoadFromEnv()
+	}
+
+	// Override database URL from command line if provided
+	if cfg.DatabaseURL != "" && cfg.DatabaseURL != "postgres://localhost:5432/forge?sslmode=disable" {
+		runtimeConf.Database.Adapter = "postgres"
+		runtimeConf.Database.Postgres.URL = cfg.DatabaseURL
+	}
+
+	// Resolve secrets from environment
+	runtimeConf.ResolveSecrets()
+
+	logger.Info("loaded runtime configuration",
+		"adapter", runtimeConf.Database.Adapter,
+		"project_dir", projectDir,
+	)
+
+	// Create database connection
+	database, err := db.New(&runtimeConf.Database)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create database: %w", err)
+	}
+
+	// Connect to database
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := database.Connect(ctx); err != nil {
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
+	}
+
+	if database.IsEmbedded() {
+		logger.Info("using embedded PostgreSQL", "data_dir", runtimeConf.Database.Embedded.DataDir)
+	} else {
+		logger.Info("connected to external PostgreSQL")
+	}
+
+	// Apply migrations from artifact
+	if artifact.Migration != nil {
+		migration := &db.Migration{
+			Version: artifact.Migration.Version,
+			Up:      artifact.Migration.Up,
+			Down:    artifact.Migration.Down,
+		}
+
+		result, err := db.ApplyMigrationWithLog(ctx, database, migration, logger)
+		if err != nil {
+			database.Close()
+			return nil, fmt.Errorf("failed to apply migration: %w", err)
+		}
+
+		logger.Info("schema ready", "applied", result.Applied, "skipped", result.Skipped)
+	}
+
 	s := &Server{
-		config:   config,
-		artifact: &artifact,
-		router:   chi.NewRouter(),
-		hub:      NewHub(),
-		logger:   logger,
+		config:      cfg,
+		runtimeConf: runtimeConf,
+		artifact:    &artifact,
+		db:          database,
+		router:      chi.NewRouter(),
+		hub:         NewHub(),
+		logger:      logger,
 	}
 
 	s.setupRoutes()
@@ -258,6 +338,14 @@ func (s *Server) Run() error {
 			s.logger.Error("server shutdown error", "error", err)
 		}
 
+		// Close database connection
+		if s.db != nil {
+			s.logger.Info("closing database connection")
+			if err := s.db.Close(); err != nil {
+				s.logger.Error("database close error", "error", err)
+			}
+		}
+
 		close(done)
 	}()
 
@@ -268,6 +356,14 @@ func (s *Server) Run() error {
 	}
 
 	<-done
+	return nil
+}
+
+// Close closes the server and releases resources.
+func (s *Server) Close() error {
+	if s.db != nil {
+		return s.db.Close()
+	}
 	return nil
 }
 

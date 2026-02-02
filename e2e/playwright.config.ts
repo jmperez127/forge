@@ -4,9 +4,11 @@ import { defineConfig, devices } from '@playwright/test';
  * Playwright configuration for FORGE E2E tests.
  *
  * Tests run against the real helpdesk application with:
- * - PostgreSQL database (via testcontainers or local instance)
- * - FORGE runtime server
+ * - Zero-config embedded PostgreSQL (via FORGE_ENV=test)
+ * - FORGE runtime server with auto-migration
  * - Vite dev server for the frontend
+ *
+ * No external database setup required!
  */
 export default defineConfig({
   testDir: './tests',
@@ -46,14 +48,16 @@ export default defineConfig({
   globalTeardown: './global-teardown.ts',
   webServer: [
     {
-      // Backend API server
+      // Backend API server with zero-config embedded PostgreSQL
+      // FORGE_ENV=test uses ephemeral database that auto-cleans up
       command: 'cd ../projects/helpdesk && ../../bin/forge-runtime -port 8080',
       port: 8080,
       reuseExistingServer: !process.env.CI,
-      timeout: 30000,
+      timeout: 60000, // Allow time for embedded PostgreSQL to start
       env: {
-        DATABASE_URL: process.env.DATABASE_URL || 'postgres://forge:forge@localhost:5432/forge_test?sslmode=disable',
+        FORGE_ENV: 'test',
         LOG_LEVEL: 'debug',
+        // No DATABASE_URL needed - uses embedded PostgreSQL from forge.runtime.toml
       },
     },
     {

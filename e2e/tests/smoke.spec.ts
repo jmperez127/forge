@@ -13,8 +13,8 @@ test.describe('Smoke Tests', () => {
   test('frontend loads', async ({ page }) => {
     await page.goto('/');
 
-    // The app title should be visible
-    await expect(page.getByText('Helpdesk')).toBeVisible();
+    // The app title in the header should be visible
+    await expect(page.getByRole('link', { name: 'Helpdesk' })).toBeVisible();
   });
 
   test('backend health endpoint responds', async ({ request }) => {

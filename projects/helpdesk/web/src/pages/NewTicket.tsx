@@ -1,20 +1,70 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAction } from '@forge/react';
+import { useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
+import { useAction } from "@forge/react";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  ArrowLeft,
+  Send,
+  Loader2,
+  AlertCircle,
+  Flame,
+  AlertTriangle,
+  CircleDot,
+  ArrowDown,
+  Sparkles,
+} from "lucide-react";
 
-interface CreateTicketInput {
-  subject: string;
-  description: string;
-  priority: 'low' | 'medium' | 'high' | 'urgent';
-}
+type Priority = "low" | "medium" | "high" | "urgent";
+
+const priorityOptions = [
+  {
+    value: "low",
+    label: "Low",
+    description: "General questions, no immediate impact",
+    icon: ArrowDown,
+    color: "text-slate-500",
+  },
+  {
+    value: "medium",
+    label: "Medium",
+    description: "Standard issues, normal response time",
+    icon: CircleDot,
+    color: "text-blue-600",
+  },
+  {
+    value: "high",
+    label: "High",
+    description: "Blocking issues, faster response needed",
+    icon: AlertTriangle,
+    color: "text-orange-600",
+  },
+  {
+    value: "urgent",
+    label: "Urgent",
+    description: "Critical problems, immediate attention",
+    icon: Flame,
+    color: "text-red-600",
+  },
+];
 
 export function NewTicket() {
   const navigate = useNavigate();
-  const createTicket = useAction<CreateTicketInput>('create_ticket');
+  const createTicket = useAction("create_ticket");
 
-  const [subject, setSubject] = useState('');
-  const [description, setDescription] = useState('');
-  const [priority, setPriority] = useState<CreateTicketInput['priority']>('medium');
+  const [subject, setSubject] = useState("");
+  const [description, setDescription] = useState("");
+  const [priority, setPriority] = useState<Priority>("medium");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,112 +75,165 @@ export function NewTicket() {
         description,
         priority,
       });
-      navigate('/');
-    } catch (e) {
-      // Error is handled by the hook
+      navigate("/");
+    } catch {
+      // Error handled by hook
     }
   };
 
-  return (
-    <div className="bg-white shadow sm:rounded-lg">
-      <div className="px-4 py-5 sm:p-6">
-        <h3 className="text-lg leading-6 font-medium text-gray-900">Create New Ticket</h3>
-        <p className="mt-1 text-sm text-gray-500">
-          Submit a new support ticket and our team will get back to you.
-        </p>
+  const selectedPriority = priorityOptions.find((p) => p.value === priority);
 
-        <form onSubmit={handleSubmit} className="mt-6 space-y-6">
-          <div>
-            <label htmlFor="subject" className="block text-sm font-medium text-gray-700">
-              Subject
-            </label>
-            <div className="mt-1">
-              <input
-                type="text"
-                name="subject"
+  return (
+    <div className="mx-auto max-w-2xl space-y-6">
+      <div className="flex items-center gap-4">
+        <Link to="/">
+          <Button variant="ghost" size="icon" className="shrink-0">
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+        </Link>
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Create Ticket</h1>
+          <p className="text-muted-foreground">
+            Submit a new support request
+          </p>
+        </div>
+      </div>
+
+      <Card className="overflow-hidden">
+        <div className="h-1 bg-gradient-to-r from-violet-500 to-purple-500" />
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-violet-100 to-purple-100">
+              <Sparkles className="h-5 w-5 text-violet-600" />
+            </div>
+            <div>
+              <CardTitle>New Support Ticket</CardTitle>
+              <CardDescription>
+                Fill out the form below and our team will get back to you as
+                soon as possible.
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-2">
+              <Label htmlFor="subject">
+                Subject
+                <span className="text-destructive ml-1">*</span>
+              </Label>
+              <Input
                 id="subject"
-                required
-                maxLength={120}
-                className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
                 placeholder="Brief summary of your issue"
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
-              />
-            </div>
-            <p className="mt-1 text-xs text-gray-500">{subject.length}/120 characters</p>
-          </div>
-
-          <div>
-            <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-              Description
-            </label>
-            <div className="mt-1">
-              <textarea
-                id="description"
-                name="description"
-                rows={6}
+                maxLength={120}
                 required
-                className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border border-gray-300 rounded-md"
-                placeholder="Describe your issue in detail..."
+              />
+              <p className="text-xs text-muted-foreground text-right">
+                {subject.length}/120 characters
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="description">
+                Description
+                <span className="text-destructive ml-1">*</span>
+              </Label>
+              <Textarea
+                id="description"
+                placeholder="Describe your issue in detail. Include any relevant error messages, steps to reproduce, or context that might help us assist you faster."
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
+                className="min-h-[160px] resize-none"
+                required
               />
             </div>
-          </div>
 
-          <div>
-            <label htmlFor="priority" className="block text-sm font-medium text-gray-700">
-              Priority
-            </label>
-            <div className="mt-1">
-              <select
-                id="priority"
-                name="priority"
-                className="shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"
+            <div className="space-y-2">
+              <Label htmlFor="priority">Priority</Label>
+              <Select
                 value={priority}
-                onChange={(e) => setPriority(e.target.value as CreateTicketInput['priority'])}
+                onValueChange={(value) =>
+                  setPriority(value as Priority)
+                }
               >
-                <option value="low">Low - General questions</option>
-                <option value="medium">Medium - Standard issues</option>
-                <option value="high">High - Blocking issues</option>
-                <option value="urgent">Urgent - Critical problems</option>
-              </select>
+                <SelectTrigger id="priority">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {priorityOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      <div className="flex items-center gap-2">
+                        <option.icon className={`h-4 w-4 ${option.color}`} />
+                        <span>{option.label}</span>
+                        <span className="text-muted-foreground">
+                          - {option.description}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedPriority && (
+                <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                  <selectedPriority.icon
+                    className={`h-3.5 w-3.5 ${selectedPriority.color}`}
+                  />
+                  {selectedPriority.description}
+                </p>
+              )}
             </div>
-          </div>
 
-          {createTicket.error && (
-            <div className="rounded-md bg-red-50 p-4">
-              <div className="flex">
-                <div className="ml-3">
-                  <h3 className="text-sm font-medium text-red-800">Error creating ticket</h3>
-                  <div className="mt-2 text-sm text-red-700">
-                    {createTicket.error.messages.map((msg, i) => (
-                      <p key={i}>{msg.message || msg.code}</p>
-                    ))}
+            {createTicket.error && (
+              <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4">
+                <AlertCircle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-red-900">
+                    Failed to create ticket
+                  </p>
+                  <div className="mt-1 text-sm text-red-700">
+                    {createTicket.error.messages.map(
+                      (msg: { message?: string; code?: string }, i: number) => (
+                        <p key={i}>{msg.message || msg.code}</p>
+                      )
+                    )}
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          <div className="flex justify-end space-x-3">
-            <button
-              type="button"
-              onClick={() => navigate('/')}
-              className="bg-white py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={createTicket.loading || !subject.trim() || !description.trim()}
-              className="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
-            >
-              {createTicket.loading ? 'Creating...' : 'Create Ticket'}
-            </button>
-          </div>
-        </form>
-      </div>
+            <div className="flex items-center justify-end gap-3 pt-4">
+              <Link to="/">
+                <Button type="button" variant="outline">
+                  Cancel
+                </Button>
+              </Link>
+              <Button
+                type="submit"
+                disabled={
+                  createTicket.loading ||
+                  !subject.trim() ||
+                  !description.trim()
+                }
+                className="gap-2 bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-700 hover:to-purple-700 shadow-lg shadow-violet-200"
+              >
+                {createTicket.loading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-4 w-4" />
+                    Create Ticket
+                  </>
+                )}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }

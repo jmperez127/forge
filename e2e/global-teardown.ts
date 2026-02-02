@@ -1,21 +1,16 @@
 /**
  * Global teardown for FORGE E2E tests.
  *
- * This runs after all tests and:
- * 1. Cleans up test data
- * 2. Closes any open connections
+ * With FORGE's zero-config database (FORGE_ENV=test), cleanup is automatic:
+ * - Embedded PostgreSQL uses ephemeral storage
+ * - Data directory is removed when the runtime stops
+ *
+ * No manual cleanup required!
  */
 async function globalTeardown(): Promise<void> {
-  console.log('\n[E2E] Starting global teardown...');
-
-  // For now, we leave the test data in place for debugging
-  // In CI, the database container will be destroyed anyway
-  if (process.env.E2E_CLEANUP === 'true') {
-    console.log('[E2E] Cleaning up test data...');
-    // Add cleanup logic here if needed
-  }
-
-  console.log('[E2E] Global teardown complete\n');
+  console.log('\n[E2E] Global teardown...');
+  console.log('[E2E] Ephemeral database will auto-cleanup when runtime stops');
+  console.log('[E2E] Done\n');
 }
 
 export default globalTeardown;

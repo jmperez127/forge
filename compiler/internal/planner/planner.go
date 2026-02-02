@@ -4,6 +4,7 @@ package planner
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/forge-lang/forge/compiler/internal/analyzer"
@@ -342,7 +343,7 @@ func (p *Planner) planMigration(plan *Plan) {
 			}
 
 			if field.Default != nil {
-				col.Default = fmt.Sprintf("%v", field.Default)
+				col.Default = p.sqlDefault(field)
 			}
 
 			table.Columns = append(table.Columns, col)
@@ -364,6 +365,9 @@ func (p *Planner) planMigration(plan *Plan) {
 
 		migration.CreateTables = append(migration.CreateTables, table)
 	}
+
+	// Sort tables by foreign key dependencies (topological sort)
+	migration.CreateTables = p.sortTablesByDependencies(migration.CreateTables)
 
 	// Create indexes for unique fields and foreign keys
 	for _, entity := range p.normalized.Entities {
@@ -490,6 +494,135 @@ func (p *Planner) tableName(entityName string) string {
 	return strings.ToLower(string(result)) + "s"
 }
 
+// sortTablesByDependencies performs a topological sort of tables based on foreign key references.
+// Tables that are referenced by others come first.
+func (p *Planner) sortTablesByDependencies(tables []*CreateTable) []*CreateTable {
+	// Build dependency graph: table -> tables it depends on
+	deps := make(map[string][]string)
+	tableMap := make(map[string]*CreateTable)
+
+	for _, t := range tables {
+		tableMap[t.Name] = t
+		deps[t.Name] = []string{}
+		for _, col := range t.Columns {
+			if col.References != nil {
+				deps[t.Name] = append(deps[t.Name], col.References.Table)
+			}
+		}
+	}
+
+	// Kahn's algorithm for topological sort
+	var sorted []*CreateTable
+	inDegree := make(map[string]int)
+
+	// Calculate in-degrees
+	for name := range deps {
+		inDegree[name] = 0
+	}
+	for _, dependencies := range deps {
+		for _, dep := range dependencies {
+			if _, exists := inDegree[dep]; exists {
+				inDegree[dep]++
+			}
+		}
+	}
+
+	// Find all tables with no incoming edges (no one depends on them)
+	// Actually, we want tables with no outgoing edges (depends on nothing) first
+	// Let's reverse this: we want tables that ARE NOT depended on to come last
+
+	// Start with tables that have no dependencies
+	var queue []string
+	for name, degree := range inDegree {
+		if degree == 0 {
+			// Check if this table has no outgoing deps
+			if len(deps[name]) == 0 {
+				queue = append(queue, name)
+			}
+		}
+	}
+
+	// Also add tables that only depend on tables not in our set
+	for name := range deps {
+		hasDeps := false
+		for _, dep := range deps[name] {
+			if _, exists := tableMap[dep]; exists {
+				hasDeps = true
+				break
+			}
+		}
+		if !hasDeps && len(deps[name]) > 0 {
+			// Depends only on external tables
+			queue = append(queue, name)
+		}
+	}
+
+	// Simple approach: tables without FK deps first, then the rest
+	var noDeps, withDeps []*CreateTable
+	for _, t := range tables {
+		hasInternalDep := false
+		for _, col := range t.Columns {
+			if col.References != nil {
+				if _, exists := tableMap[col.References.Table]; exists {
+					hasInternalDep = true
+					break
+				}
+			}
+		}
+		if hasInternalDep {
+			withDeps = append(withDeps, t)
+		} else {
+			noDeps = append(noDeps, t)
+		}
+	}
+
+	// Keep iterating until all tables are sorted
+	sorted = append(sorted, noDeps...)
+	sortedSet := make(map[string]bool)
+	for _, t := range sorted {
+		sortedSet[t.Name] = true
+	}
+
+	// Add remaining tables in dependency order
+	for len(sorted) < len(tables) {
+		added := false
+		for _, t := range withDeps {
+			if sortedSet[t.Name] {
+				continue
+			}
+			// Check if all dependencies are satisfied
+			allSatisfied := true
+			for _, col := range t.Columns {
+				if col.References != nil {
+					if _, inTable := tableMap[col.References.Table]; inTable {
+						if !sortedSet[col.References.Table] {
+							allSatisfied = false
+							break
+						}
+					}
+				}
+			}
+			if allSatisfied {
+				sorted = append(sorted, t)
+				sortedSet[t.Name] = true
+				added = true
+			}
+		}
+		if !added {
+			// Circular dependency or unreachable - just add remaining
+			for _, t := range withDeps {
+				if !sortedSet[t.Name] {
+					sorted = append(sorted, t)
+					sortedSet[t.Name] = true
+				}
+			}
+			break
+		}
+	}
+
+	return sorted
+}
+
 func (p *Planner) sqlType(field *normalizer.NormalizedField, entityName string) string {
 	switch field.Type {
 	case "enum":
@@ -497,6 +630,38 @@ func (p *Planner) sqlType(field *normalizer.NormalizedField, entityName string) 
 	default:
 		return field.Type
 	}
+}
+
+// sqlDefault formats a default value for SQL.
+// Enum values and strings need to be quoted, functions and literals don't.
+func (p *Planner) sqlDefault(field *normalizer.NormalizedField) string {
+	if field.Default == nil {
+		return ""
+	}
+
+	defaultStr := fmt.Sprintf("%v", field.Default)
+
+	// Don't quote function calls like now(), gen_random_uuid()
+	if strings.Contains(defaultStr, "(") {
+		return defaultStr
+	}
+
+	// Don't quote booleans
+	if defaultStr == "true" || defaultStr == "false" {
+		return defaultStr
+	}
+
+	// Don't quote numbers
+	if _, err := strconv.ParseFloat(defaultStr, 64); err == nil {
+		return defaultStr
+	}
+
+	// Quote enum values and string defaults
+	if field.Type == "enum" || field.Type == "string" {
+		return fmt.Sprintf("'%s'", defaultStr)
+	}
+
+	return defaultStr
 }
 
 func (p *Planner) conditionToSQL(celExpr string, isForbid bool) string {
