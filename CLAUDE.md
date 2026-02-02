@@ -149,6 +149,23 @@ When a bug is reported, follow this process:
 
 ---
 
+## App Development Rules
+
+When implementing applications using FORGE (in `projects/` folder):
+
+1. **DO NOT modify the FORGE runtime or compiler** to accommodate app-specific needs. The runtime must remain generic.
+
+2. **If you hit a limitation**, ask the user for directions before making changes to FORGE. We need to discuss whether:
+   - The limitation should be addressed in FORGE (making it generic for all apps)
+   - There's a workaround within the existing constructs
+   - The app design should be adjusted
+
+3. **App-specific code belongs in the app**, not in the runtime. Things like typing indicators, presence, and custom UI logic should be implemented in the app's frontend code using the generic primitives FORGE provides.
+
+4. **The SDK (client.ts, react.tsx) in each app** can have app-specific extensions, but changes that would benefit all apps should be discussed first.
+
+---
+
 ## Key Patterns
 
 ### Compiler Pattern: Pipeline with Diagnostics

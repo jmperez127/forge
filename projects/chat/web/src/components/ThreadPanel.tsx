@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { UserAvatar } from "./UserAvatar";
 import { MessageComposer } from "./MessageComposer";
-import { useThreadList, useReplyToMessage, useAuth } from "@/lib/forge/react";
+import { useThreadList, useReplyToMessage, useAuth, useThreadTypingIndicator } from "@/lib/forge/react";
+import { TypingIndicator } from "./TypingIndicator";
 import { formatTime, cn } from "@/lib/utils";
 
 interface ParentMessage {
@@ -30,7 +31,10 @@ export const ThreadPanel = memo(function ThreadPanel({
   const { user } = useAuth();
   const { data: threads, loading, refetch } = useThreadList(message.id);
   const { execute: replyToMessage, loading: replying } = useReplyToMessage();
+  const { typingUsers: typingData, sendTyping } = useThreadTypingIndicator(message.id);
+  const typingUsers = typingData.map(u => u.user_name);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [localReplies, setLocalReplies] = useState<Array<{
     id: string;
     content: string;
@@ -66,7 +70,20 @@ export const ThreadPanel = memo(function ThreadPanel({
     }
   }, [user, message.id, replyToMessage, refetch]);
 
-  const handleTyping = useCallback(() => {}, []);
+  const handleTyping = useCallback(() => {
+    sendTyping(true);
+
+    // Clear existing timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    // Stop typing after 2 seconds of no input
+    typingTimeoutRef.current = setTimeout(() => {
+      sendTyping(false);
+      typingTimeoutRef.current = null;
+    }, 2000);
+  }, [sendTyping]);
 
   const allReplies = [...(threads || []), ...localReplies];
 
@@ -165,6 +182,9 @@ export const ThreadPanel = memo(function ThreadPanel({
           </div>
         )}
       </ScrollArea>
+
+      {/* Typing indicator */}
+      <TypingIndicator users={typingUsers} />
 
       {/* Reply composer */}
       <div className="border-t">

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useParams, Link } from "react-router-dom";
-import { useMessageFeed, useSendMessage, useAuth } from "@/lib/forge/react";
+import { useMessageFeed, useSendMessage, useAuth, useTypingIndicator } from "@/lib/forge/react";
 import type { Channel as ChannelType } from "@/lib/forge/client";
 import { Hash, Lock, Users, Settings, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -116,9 +116,26 @@ export function Channel() {
     }
   }, [id, user, sendMessageAction, refetch]);
 
-  // Typing indicator (simplified for now)
-  const [typingUsers] = useState<string[]>([]);
-  const handleTyping = useCallback(() => {}, []);
+  // Typing indicator
+  const { typingUsers: typingData, sendTyping } = useTypingIndicator(id);
+  const typingUsers = typingData.map(u => u.user_name);
+
+  // Debounced typing handler
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleTyping = useCallback(() => {
+    sendTyping(true);
+
+    // Clear existing timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    // Stop typing after 2 seconds of no input
+    typingTimeoutRef.current = setTimeout(() => {
+      sendTyping(false);
+      typingTimeoutRef.current = null;
+    }, 2000);
+  }, [sendTyping]);
 
   // Thread panel state
   const [selectedThread, setSelectedThread] = useState<MessageData | null>(null);

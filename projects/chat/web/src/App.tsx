@@ -17,6 +17,7 @@ import { Channel } from "@/pages/Channel";
 import { DirectMessage } from "@/pages/DirectMessage";
 import { CreateWorkspace } from "@/pages/CreateWorkspace";
 import { Settings } from "@/pages/Settings";
+import { Threads } from "@/pages/Threads";
 import { CreateChannelDialog } from "@/components/CreateChannelDialog";
 import { Loader2 } from "lucide-react";
 
@@ -233,7 +234,7 @@ function AppRoutes() {
                 <Route path="/" element={<WorkspaceRedirect />} />
                 <Route path="/channel/:id" element={<Channel />} />
                 <Route path="/dm/:id" element={<DirectMessage />} />
-                <Route path="/threads" element={<ComingSoon title="Threads" />} />
+                <Route path="/threads" element={<Threads />} />
                 <Route path="/members" element={<ComingSoon title="Members" />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,0 +1,186 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --primary: 262 83% 58%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 240 4.8% 95.9%;
+    --accent-foreground: 240 5.9% 10%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 262 83% 58%;
+    --radius: 0.75rem;
+  }
+
+  .dark {
+    --background: 240 10% 4%;
+    --foreground: 0 0% 95%;
+    --card: 240 10% 6%;
+    --card-foreground: 0 0% 95%;
+    --primary: 262 83% 58%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 15%;
+    --secondary-foreground: 0 0% 95%;
+    --muted: 240 5% 15%;
+    --muted-foreground: 240 5% 55%;
+    --accent: 240 5% 15%;
+    --accent-foreground: 0 0% 95%;
+    --border: 240 5% 20%;
+    --input: 240 5% 20%;
+    --ring: 262 83% 58%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/20 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/30;
+  }
+}
+
+@layer utilities {
+  /* Text gradient */
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-forge-400 via-forge-500 to-forge-600;
+  }
+
+  /* Glow effect */
+  .glow {
+    box-shadow: 0 0 40px rgba(139, 92, 246, 0.3);
+  }
+
+  .glow-strong {
+    box-shadow: 0 0 60px rgba(139, 92, 246, 0.4), 0 0 120px rgba(139, 92, 246, 0.2);
+  }
+
+  /* Code block styling */
+  .code-block {
+    @apply font-mono text-sm bg-card rounded-lg border border-border overflow-hidden;
+  }
+
+  .code-header {
+    @apply px-4 py-2 bg-muted/50 border-b border-border text-muted-foreground text-xs font-medium;
+  }
+
+  .code-content {
+    @apply p-4 overflow-x-auto;
+  }
+
+  /* Syntax highlighting */
+  .syntax-keyword {
+    @apply text-forge-400;
+  }
+
+  .syntax-entity {
+    @apply text-amber-400;
+  }
+
+  .syntax-field {
+    @apply text-sky-400;
+  }
+
+  .syntax-type {
+    @apply text-emerald-400;
+  }
+
+  .syntax-string {
+    @apply text-orange-300;
+  }
+
+  .syntax-operator {
+    @apply text-pink-400;
+  }
+
+  .syntax-comment {
+    @apply text-muted-foreground italic;
+  }
+
+  .syntax-number {
+    @apply text-amber-300;
+  }
+
+  /* Animation delay utilities */
+  .delay-100 { animation-delay: 100ms; }
+  .delay-200 { animation-delay: 200ms; }
+  .delay-300 { animation-delay: 300ms; }
+  .delay-400 { animation-delay: 400ms; }
+  .delay-500 { animation-delay: 500ms; }
+  .delay-600 { animation-delay: 600ms; }
+  .delay-700 { animation-delay: 700ms; }
+  .delay-800 { animation-delay: 800ms; }
+  .delay-900 { animation-delay: 900ms; }
+  .delay-1000 { animation-delay: 1000ms; }
+
+  /* Section spacing */
+  .section {
+    @apply py-24 md:py-32;
+  }
+
+  .section-heading {
+    @apply text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight;
+  }
+
+  .section-subheading {
+    @apply text-lg md:text-xl text-muted-foreground max-w-2xl;
+  }
+
+  /* Gradient backgrounds */
+  .bg-grid {
+    background-image:
+      linear-gradient(to right, hsl(var(--border)) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(var(--border)) 1px, transparent 1px);
+    background-size: 60px 60px;
+  }
+
+  .bg-radial-gradient {
+    background: radial-gradient(ellipse at center, hsl(var(--card)) 0%, hsl(var(--background)) 70%);
+  }
+
+  .bg-hero-gradient {
+    background:
+      radial-gradient(ellipse 80% 50% at 50% -20%, rgba(139, 92, 246, 0.15), transparent),
+      radial-gradient(ellipse 60% 30% at 80% 50%, rgba(139, 92, 246, 0.1), transparent);
+  }
+}
+
+/* Smooth scroll */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Selection styling */
+::selection {
+  @apply bg-forge-500/30;
+}

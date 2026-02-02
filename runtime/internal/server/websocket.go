@@ -181,6 +181,42 @@ func (h *Hub) BroadcastToView(viewName string, data interface{}) {
 	log.Printf("[WS] Broadcast sent to %d clients", sentCount)
 }
 
+// BroadcastEphemeral broadcasts an ephemeral message to view subscribers except the sender.
+// Used for presence, typing indicators, cursor positions, and other transient state.
+func (h *Hub) BroadcastEphemeral(sender *Client, viewName string, data interface{}) {
+	h.mu.RLock()
+	clients := h.viewSubs[viewName]
+	h.mu.RUnlock()
+
+	if len(clients) == 0 {
+		return
+	}
+
+	msg := WSMessage{
+		Type: "ephemeral",
+		View: viewName,
+		Data: data,
+	}
+
+	msgBytes, err := json.Marshal(msg)
+	if err != nil {
+		log.Printf("[WS] Error marshaling ephemeral: %v", err)
+		return
+	}
+
+	for client := range clients {
+		// Don't send back to the sender
+		if client == sender {
+			continue
+		}
+		select {
+		case client.send <- msgBytes:
+		default:
+			// Client buffer full, skip
+		}
+	}
+}
+
 // WSMessage represents a WebSocket message.
 type WSMessage struct {
 	Type  string      `json:"type"` // subscribe, unsubscribe, data, error
@@ -229,6 +265,13 @@ func (c *Client) readPump() {
 			if msg.View != "" {
 				c.hub.Unsubscribe(c, msg.View)
 				c.sendAck("unsubscribed", msg.View)
+			}
+
+		case "broadcast":
+			// Generic ephemeral broadcast to view subscribers (excludes sender)
+			// Used for presence, typing indicators, cursor positions, etc.
+			if msg.View != "" && msg.Data != nil {
+				c.hub.BroadcastEphemeral(c, msg.View, msg.Data)
 			}
 
 		default:

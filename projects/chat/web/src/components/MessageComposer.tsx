@@ -37,10 +37,24 @@ export const MessageComposer = memo(function MessageComposer({
     }
   }, [content]);
 
+  // Restore focus when becoming enabled (e.g., after sending)
+  const wasDisabledRef = useRef(disabled);
+  useEffect(() => {
+    if (wasDisabledRef.current && !disabled) {
+      // Just became enabled, restore focus
+      textareaRef.current?.focus();
+    }
+    wasDisabledRef.current = disabled;
+  }, [disabled]);
+
   const handleSubmit = () => {
     if (content.trim() && !disabled) {
       onSend(content.trim());
       setContent("");
+      // Restore focus after clearing content
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus();
+      });
     }
   };
 
