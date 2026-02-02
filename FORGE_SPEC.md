@@ -670,7 +670,47 @@ FORGE excels at **business applications**.
 
 ---
 
-## 35. Glossary
+## 35. Runtime Plugins
+
+FORGE supports extending the runtime through compile-time plugins.
+
+### Plugin Types
+
+- **Database Providers**: Alternative storage backends
+- **Capabilities**: New job effects
+- **Integrations**: External system synchronization
+
+### Compile-Time Only
+
+Plugins compile into the runtime binary. There is no dynamic plugin loading.
+
+This preserves the sealed runtime guarantee:
+- What you build is what runs
+- No arbitrary code loading at startup
+- Single binary deployment
+
+### Configuration
+
+```toml
+[database]
+provider = "mongodb"
+url = "env:MONGODB_URL"
+
+[plugins.salesforce]
+client_id = "env:SF_CLIENT_ID"
+```
+
+### Build Command
+
+```bash
+forge build --plugins ./plugins/mongodb,./plugins/salesforce
+```
+
+Plugins implement Go interfaces (`provider.DatabaseProvider`, `capability.Capability`, `integration.Integration`).
+
+---
+
+## 36. Glossary
 
 - **Action**: Named state transition
 - **Rule**: Invariant or forbidden transition
@@ -678,10 +718,11 @@ FORGE excels at **business applications**.
 - **View**: State projection
 - **Artifact**: Compiled app bytecode
 - **Capability**: Allowed side-effect class
+- **Plugin**: Compile-time runtime extension
 
 ---
 
-## 36. Final Note
+## 37. Final Note
 
 FORGE is designed so that:
 - Meaning lives in the spec

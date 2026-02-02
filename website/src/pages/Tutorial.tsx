@@ -384,9 +384,7 @@ export default function Tutorial() {
             </Link>
 
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-forge-500 to-forge-600 flex items-center justify-center">
-                <span className="text-white font-bold text-sm">F</span>
-              </div>
+              <img src="/logo.jpg" alt="FORGE" className="w-8 h-8 rounded-lg" />
               <span className="font-bold">FORGE Tutorial</span>
             </div>
 

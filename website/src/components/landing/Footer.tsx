@@ -9,9 +9,7 @@ export function Footer() {
           {/* Brand */}
           <div className="col-span-2 md:col-span-1">
             <Link to="/" className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-forge-500 to-forge-600 flex items-center justify-center">
-                <span className="text-white font-bold text-sm">F</span>
-              </div>
+              <img src="/logo.jpg" alt="FORGE" className="w-8 h-8 rounded-lg" />
               <span className="font-bold text-xl">FORGE</span>
             </Link>
             <p className="text-sm text-muted-foreground mb-4">
@@ -69,9 +67,9 @@ export function Footer() {
             <h4 className="font-semibold mb-4">Resources</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li>
-                <a href="#" className="hover:text-foreground transition-colors">
+                <Link to="/docs" className="hover:text-foreground transition-colors">
                   Documentation
-                </a>
+                </Link>
               </li>
               <li>
                 <a href="#" className="hover:text-foreground transition-colors">

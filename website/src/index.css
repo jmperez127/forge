@@ -74,6 +74,8 @@
   /* Text gradient */
   .text-gradient {
     @apply bg-clip-text text-transparent bg-gradient-to-r from-forge-400 via-forge-500 to-forge-600;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
   }
 
   /* Glow effect */

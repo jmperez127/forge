@@ -7,69 +7,54 @@ import { highlightForge } from "@/lib/syntax-highlight";
 
 const codeToDelete = [
   { text: "import express, { Request, Response, NextFunction } from 'express';", delay: 0 },
-  { text: "import { authenticate } from '../middleware/auth';", delay: 30 },
-  { text: "import { checkPermission } from '../middleware/permissions';", delay: 60 },
-  { text: "import { validate } from '../middleware/validate';", delay: 90 },
-  { text: "import { ticketSchema, updateTicketSchema } from '../schemas/ticket';", delay: 120 },
-  { text: "import { TicketService } from '../services/TicketService';", delay: 150 },
-  { text: "import { TicketSerializer } from '../serializers/TicketSerializer';", delay: 180 },
-  { text: "import { NotificationQueue } from '../queues/notifications';", delay: 210 },
-  { text: "import { AppError } from '../utils/errors';", delay: 240 },
-  { text: "import { logger } from '../utils/logger';", delay: 270 },
-  { text: "", delay: 300 },
-  { text: "const router = express.Router();", delay: 330 },
-  { text: "", delay: 360 },
-  { text: "// GET /tickets - List all tickets for current org", delay: 390 },
-  { text: "router.get('/',", delay: 420 },
-  { text: "  authenticate,", delay: 450 },
-  { text: "  checkPermission('ticket:read'),", delay: 480 },
-  { text: "  async (req: Request, res: Response, next: NextFunction) => {", delay: 510 },
-  { text: "    try {", delay: 540 },
-  { text: "      const { page = 1, limit = 20, status } = req.query;", delay: 570 },
-  { text: "      const tickets = await TicketService.findAll({", delay: 600 },
-  { text: "        where: {", delay: 630 },
-  { text: "          orgId: req.user!.orgId,", delay: 660 },
-  { text: "          ...(status && { status })", delay: 690 },
-  { text: "        },", delay: 720 },
-  { text: "        include: ['author', 'assignee', 'organization'],", delay: 750 },
-  { text: "        offset: (Number(page) - 1) * Number(limit),", delay: 780 },
-  { text: "        limit: Number(limit)", delay: 810 },
-  { text: "      });", delay: 840 },
-  { text: "      const serialized = TicketSerializer.serializeMany(tickets);", delay: 870 },
-  { text: "      res.json({ data: serialized, meta: { page, limit } });", delay: 900 },
-  { text: "    } catch (err) {", delay: 930 },
-  { text: "      logger.error('Failed to fetch tickets', err);", delay: 960 },
-  { text: "      next(err);", delay: 990 },
-  { text: "    }", delay: 1020 },
-  { text: "  }", delay: 1050 },
-  { text: ");", delay: 1080 },
-  { text: "", delay: 1110 },
-  { text: "// POST /tickets - Create a new ticket", delay: 1140 },
-  { text: "router.post('/',", delay: 1170 },
-  { text: "  authenticate,", delay: 1200 },
-  { text: "  validate(ticketSchema),", delay: 1230 },
-  { text: "  checkPermission('ticket:create'),", delay: 1260 },
-  { text: "  async (req: Request, res: Response, next: NextFunction) => {", delay: 1290 },
-  { text: "    try {", delay: 1320 },
-  { text: "      const ticket = await TicketService.create({", delay: 1350 },
-  { text: "        ...req.body,", delay: 1380 },
-  { text: "        authorId: req.user!.id,", delay: 1410 },
-  { text: "        orgId: req.user!.orgId,", delay: 1440 },
-  { text: "        status: 'open'", delay: 1470 },
-  { text: "      });", delay: 1500 },
-  { text: "      await NotificationQueue.add('notifyAgent', {", delay: 1530 },
-  { text: "        ticketId: ticket.id,", delay: 1560 },
-  { text: "        type: 'new_ticket'", delay: 1590 },
-  { text: "      });", delay: 1620 },
-  { text: "      logger.info(`Ticket created: ${ticket.id}`);", delay: 1650 },
-  { text: "      const serialized = TicketSerializer.serialize(ticket);", delay: 1680 },
-  { text: "      res.status(201).json({ data: serialized });", delay: 1710 },
-  { text: "    } catch (err) {", delay: 1740 },
-  { text: "      logger.error('Failed to create ticket', err);", delay: 1770 },
-  { text: "      next(err);", delay: 1800 },
-  { text: "    }", delay: 1830 },
-  { text: "  }", delay: 1860 },
-  { text: ");", delay: 1890 },
+  { text: "import { authenticate } from '../middleware/auth';", delay: 15 },
+  { text: "import { checkPermission } from '../middleware/permissions';", delay: 30 },
+  { text: "import { validate } from '../middleware/validate';", delay: 45 },
+  { text: "import { TicketService } from '../services/TicketService';", delay: 60 },
+  { text: "import { TicketSerializer } from '../serializers/TicketSerializer';", delay: 75 },
+  { text: "import { NotificationQueue } from '../queues/notifications';", delay: 90 },
+  { text: "", delay: 105 },
+  { text: "const router = express.Router();", delay: 120 },
+  { text: "", delay: 135 },
+  { text: "router.get('/',", delay: 150 },
+  { text: "  authenticate,", delay: 165 },
+  { text: "  checkPermission('ticket:read'),", delay: 180 },
+  { text: "  async (req: Request, res: Response, next: NextFunction) => {", delay: 195 },
+  { text: "    try {", delay: 210 },
+  { text: "      const tickets = await TicketService.findAll({", delay: 225 },
+  { text: "        where: { orgId: req.user!.orgId },", delay: 240 },
+  { text: "        include: ['author', 'assignee'],", delay: 255 },
+  { text: "      });", delay: 270 },
+  { text: "      const serialized = TicketSerializer.serializeMany(tickets);", delay: 285 },
+  { text: "      res.json({ data: serialized });", delay: 300 },
+  { text: "    } catch (err) {", delay: 315 },
+  { text: "      next(err);", delay: 330 },
+  { text: "    }", delay: 345 },
+  { text: "  }", delay: 360 },
+  { text: ");", delay: 375 },
+  { text: "", delay: 390 },
+  { text: "router.post('/',", delay: 405 },
+  { text: "  authenticate,", delay: 420 },
+  { text: "  validate(ticketSchema),", delay: 435 },
+  { text: "  checkPermission('ticket:create'),", delay: 450 },
+  { text: "  async (req: Request, res: Response, next: NextFunction) => {", delay: 465 },
+  { text: "    try {", delay: 480 },
+  { text: "      const ticket = await TicketService.create({", delay: 495 },
+  { text: "        ...req.body,", delay: 510 },
+  { text: "        authorId: req.user!.id,", delay: 525 },
+  { text: "        orgId: req.user!.orgId,", delay: 540 },
+  { text: "        status: 'open'", delay: 555 },
+  { text: "      });", delay: 570 },
+  { text: "      await NotificationQueue.add('notifyAgent', {", delay: 585 },
+  { text: "        ticketId: ticket.id,", delay: 600 },
+  { text: "        type: 'new_ticket'", delay: 615 },
+  { text: "      });", delay: 630 },
+  { text: "      res.status(201).json({ data: ticket });", delay: 645 },
+  { text: "    } catch (err) {", delay: 660 },
+  { text: "      next(err);", delay: 675 },
+  { text: "    }", delay: 690 },
+  { text: "  }", delay: 705 },
+  { text: ");", delay: 720 },
 ];
 
 const forgeCode = `entity Ticket {
@@ -102,12 +87,12 @@ export function Hero() {
     codeToDelete.forEach((_, index) => {
       setTimeout(() => {
         setDeletedLines((prev) => [...prev, index]);
-      }, index * 80 + 500);
+      }, index * 50 + 1300);
     });
 
     setTimeout(() => {
       setShowForge(true);
-    }, codeToDelete.length * 80 + 1000);
+    }, codeToDelete.length * 50 + 1600);
   }, [showDelete]);
 
   return (
@@ -149,7 +134,7 @@ export function Hero() {
             {/* Headline */}
             <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight mb-6">
               <span className="block">Stop writing code.</span>
-              <span className="block text-gradient">Start declaring intent.</span>
+              <span className="block text-gradient pb-1.5">Start declaring intent.</span>
             </h1>
 
             {/* Subheadline */}

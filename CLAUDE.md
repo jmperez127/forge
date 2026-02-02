@@ -392,6 +392,70 @@ cd e2e && npx playwright test --debug
 | 2024-01-01 | CEL for business rules | Non-Turing complete, sandboxed, auditable |
 | 2024-01-01 | chi for HTTP routing | Idiomatic Go, net/http compatible |
 | 2024-01-01 | gorilla/websocket for realtime | Battle-tested, hub pattern |
+| 2024-01-01 | Compile-time plugins | Maintains sealed runtime guarantee, single binary |
+
+---
+
+## Runtime Plugins
+
+FORGE supports extending the runtime through compile-time plugins. Plugins are Go packages that compile into the runtime binary—they cannot be loaded dynamically at runtime.
+
+### Why Compile-Time?
+
+- **Sealed runtime guarantee** — What you build is what runs
+- **Type safety** — Verified at compile time, not discovered in production
+- **Single binary** — No runtime dependencies, simpler deployment
+- **Security** — No arbitrary code loading at startup
+
+### Plugin Types
+
+| Type | Interface | Purpose |
+|------|-----------|---------|
+| Database Provider | `provider.DatabaseProvider` | Alternative storage backends (MongoDB, MySQL) |
+| Capability | `capability.Capability` | New job effects (ML inference, custom APIs) |
+| Integration | `integration.Integration` | External system sync (Salesforce, etc.) |
+
+### Building with Plugins
+
+```bash
+# Build with custom plugins
+forge build --plugins ./plugins/mongodb,./plugins/salesforce
+
+# Plugins are compiled into the binary
+.forge/runtime  # Single binary with plugins embedded
+```
+
+### Configuration
+
+```toml
+# forge.toml
+[database]
+provider = "mongodb"        # Use plugin instead of built-in
+url = "env:MONGODB_URL"
+
+[plugins.salesforce]
+client_id = "env:SF_CLIENT_ID"
+```
+
+### Plugin Interface Example
+
+```go
+// plugins/custom/provider.go
+package custom
+
+import "github.com/forge-lang/forge/runtime/provider"
+
+type CustomProvider struct{}
+
+func (p *CustomProvider) Name() string { return "custom" }
+func (p *CustomProvider) Init(config map[string]string) error { ... }
+func (p *CustomProvider) Query(view provider.ViewSpec) ([]map[string]any, error) { ... }
+func (p *CustomProvider) Execute(action provider.ActionSpec) error { ... }
+
+func init() {
+    provider.RegisterDatabase(&CustomProvider{})
+}
+```
 
 ---
 

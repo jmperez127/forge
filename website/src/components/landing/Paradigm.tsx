@@ -1,6 +1,6 @@
 import { motion, useInView } from "framer-motion";
 import { useRef } from "react";
-import { ArrowRight, Cpu, Database, Code2 } from "lucide-react";
+import { ArrowRight, Cpu, Database, Code2, Trash2 } from "lucide-react";
 
 const evolution = [
   {
@@ -9,6 +9,13 @@ const evolution = [
     solution: "Compilers handle it",
     tech: "Assembly → C/Fortran",
     icon: Cpu,
+  },
+  {
+    era: "1980s",
+    problem: "Manage memory manually",
+    solution: "Garbage collectors handle it",
+    tech: "malloc/free → GC (Java, Go)",
+    icon: Trash2,
   },
   {
     era: "1990s",
@@ -85,7 +92,7 @@ export function Paradigm() {
               {/* Connection line */}
               <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-gradient-to-r from-muted via-forge-500/50 to-forge-500 -translate-y-1/2 hidden md:block" />
 
-              <div className="grid md:grid-cols-3 gap-6">
+              <div className="grid md:grid-cols-4 gap-4">
                 {evolution.map((item, index) => {
                   const Icon = item.icon;
                   return (
