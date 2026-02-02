@@ -1,0 +1,262 @@
+# FORGE Helpdesk Application
+# A complete helpdesk/ticketing system example
+
+app Helpdesk {
+  auth: oauth
+  database: postgres
+  frontend: web
+}
+
+# =============================================================================
+# ENTITIES
+# =============================================================================
+
+entity User {
+  email: string unique
+  name: string
+  role: enum(admin, agent, customer) = customer
+  avatar_url: string
+}
+
+entity Organization {
+  name: string
+  slug: string unique
+  plan: enum(free, pro, enterprise) = free
+}
+
+entity Ticket {
+  subject: string length <= 120
+  description: string
+  status: enum(open, pending, in_progress, resolved, closed) = open
+  priority: enum(low, medium, high, urgent) = medium
+}
+
+entity Comment {
+  body: string
+  internal: bool = false
+}
+
+entity Tag {
+  name: string unique
+  color: string
+}
+
+# =============================================================================
+# RELATIONS
+# =============================================================================
+
+# Organization members
+relation Organization.members -> User many
+relation Organization.owner -> User
+
+# Tickets belong to org and have author/assignee
+relation Ticket.org -> Organization
+relation Ticket.author -> User
+relation Ticket.assignee -> User
+
+# Comments belong to ticket and have author
+relation Comment.ticket -> Ticket
+relation Comment.author -> User
+
+# Ticket tags (many-to-many)
+relation Ticket.tags -> Tag many
+
+# =============================================================================
+# RULES
+# =============================================================================
+
+rule Ticket.update {
+  forbid if status == closed
+    emit TICKET_CLOSED
+}
+
+rule Ticket.delete {
+  forbid if status != closed
+    emit TICKET_NOT_CLOSED
+}
+
+rule Comment.create {
+  require if body length >= 1
+    emit COMMENT_EMPTY
+}
+
+rule Comment.update {
+  forbid if author != user
+    emit NOT_AUTHOR
+}
+
+# =============================================================================
+# ACCESS CONTROL
+# =============================================================================
+
+access User {
+  read: user.role == admin or user.id == id
+  write: user.role == admin or user.id == id
+}
+
+access Organization {
+  read: user in members or user == owner
+  write: user == owner or user.role == admin
+}
+
+access Ticket {
+  read: user in org.members
+  write: user == author or user == assignee or user.role == agent
+}
+
+access Comment {
+  read: user in ticket.org.members
+  write: user == author or user.role == agent
+}
+
+# =============================================================================
+# ACTIONS
+# =============================================================================
+
+action create_ticket {
+  input: Ticket
+}
+
+action close_ticket {
+  input: Ticket
+}
+
+action assign_ticket {
+  input: Ticket
+}
+
+action add_comment {
+  input: Comment
+}
+
+action escalate_ticket {
+  input: Ticket
+}
+
+# =============================================================================
+# MESSAGES
+# =============================================================================
+
+message TICKET_CLOSED {
+  level: error
+  default: "This ticket is already closed and cannot be modified."
+}
+
+message TICKET_NOT_CLOSED {
+  level: error
+  default: "Only closed tickets can be deleted."
+}
+
+message COMMENT_EMPTY {
+  level: error
+  default: "Comment body cannot be empty."
+}
+
+message NOT_AUTHOR {
+  level: error
+  default: "Only the author can edit this comment."
+}
+
+message TICKET_CREATED {
+  level: info
+  default: "Your ticket has been created successfully."
+}
+
+message TICKET_ASSIGNED {
+  level: info
+  default: "The ticket has been assigned."
+}
+
+message TICKET_ESCALATED {
+  level: warning
+  default: "This ticket has been escalated to priority urgent."
+}
+
+# =============================================================================
+# HOOKS
+# =============================================================================
+
+hook Ticket.after_create {
+  enqueue notify_agents
+}
+
+hook Ticket.after_update {
+  enqueue notify_author
+}
+
+hook Comment.after_create {
+  enqueue notify_ticket_participants
+}
+
+# =============================================================================
+# JOBS
+# =============================================================================
+
+job notify_agents {
+  input: Ticket
+  needs: Ticket.org.members where role == agent
+  effect: email.send
+}
+
+job notify_author {
+  input: Ticket
+  needs: Ticket.author
+  effect: email.send
+}
+
+job notify_ticket_participants {
+  input: Comment
+  needs: Comment.ticket.org.members
+  effect: email.send
+}
+
+# =============================================================================
+# VIEWS
+# =============================================================================
+
+view TicketList {
+  source: Ticket
+  fields: subject, status, priority, author.name, assignee.name
+}
+
+view TicketDetail {
+  source: Ticket
+  fields: subject, description, status, priority, author, assignee, tags
+}
+
+view OrganizationTickets {
+  source: Ticket
+  fields: subject, status, priority, created_at
+}
+
+view AgentDashboard {
+  source: Ticket
+  fields: subject, status, priority, org.name, author.name
+}
+
+view CommentThread {
+  source: Comment
+  fields: body, author.name, internal, created_at
+}
+
+# =============================================================================
+# TESTS
+# =============================================================================
+
+test Ticket.update {
+  given status = closed
+  when update Ticket
+  expect reject TICKET_CLOSED
+}
+
+test Ticket.update {
+  given status = open
+  when update Ticket
+  expect Ticket.status = pending
+}
+
+test close_ticket {
+  given Ticket.status = open
+  when action close_ticket
+  expect Ticket.status = closed
+}

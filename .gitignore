@@ -1,0 +1,59 @@
+# Go workspace (local only)
+go.work
+go.work.sum
+
+# Binaries
+/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+forge
+forge-runtime
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.html
+
+# Dependency directories
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+*.artifact.json
+
+# Runtime
+.forge-runtime/
+
+# Node modules (for SDK)
+node_modules/
+sdk/typescript/client/dist/
+sdk/typescript/react/dist/
+
+# Environment
+.env
+.env.local
+*.pem
+
+# Logs
+*.log
+logs/
+
+# Test databases
+*.db
+*.sqlite
