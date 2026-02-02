@@ -943,3 +943,31 @@ The runtime handles SIGTERM/SIGINT gracefully:
 # Graceful shutdown
 kill -TERM $(pgrep forge-runtime)
 ```
+
+---
+
+## Development Info Page
+
+In development mode (`FORGE_ENV=development` or unset), the runtime exposes a dashboard at `/_dev` with:
+
+- **Routes** - All API endpoints with access rules
+- **Schema** - Entities, fields, relations
+- **Rules** - Business rules with SQL predicates
+- **Access** - Access control policies
+- **Config** - Runtime configuration (secrets masked)
+- **Stats** - Database and WebSocket status
+
+```bash
+# Open dashboard
+open http://localhost:8080/_dev
+
+# Get routes as JSON
+curl http://localhost:8080/_dev/routes
+
+# CLI shortcut
+forge dev routes
+```
+
+These endpoints return 404 in production for security.
+
+See [Dev Info Page](./dev-info.md) for complete documentation.

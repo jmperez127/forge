@@ -32,6 +32,8 @@ FORGE is what Rails would look like if invented AFTER we understood distributed 
 | `FORGE_SPEC.md` | **Authoritative specification** - READ THIS FIRST |
 | `HOW_FORGE_WAS_CONCIEVED.html` | Origin story and design philosophy |
 | `CLAUDE.md` | This file - AI development context |
+| `decisions.md` | Architectural decision log |
+| `docs/dev-info.md` | Development info page documentation |
 
 ---
 
@@ -258,6 +260,48 @@ cd runtime && go build -o ../bin/forge-runtime ./cmd/forge-runtime
 # Build helpdesk example
 cd projects/helpdesk/spec && ../../../bin/forge build
 ```
+
+### Starting the Server
+
+```bash
+# Development mode (default) - enables /_dev info pages
+FORGE_ENV=development ./bin/forge run
+
+# Or just (FORGE_ENV defaults to development)
+./bin/forge run
+
+# Production mode - disables /_dev, returns 404
+FORGE_ENV=production ./bin/forge run
+
+# With database and port
+FORGE_ENV=production DATABASE_URL="postgres://..." PORT=3000 ./bin/forge run
+```
+
+### Development Info Page (Dev Mode Only)
+
+When `FORGE_ENV=development` (or unset), the runtime exposes app info at `/_dev`. Returns 404 in production.
+
+```bash
+# Open dashboard in browser
+open http://localhost:8080/_dev
+
+# Get app info as JSON
+curl http://localhost:8080/_dev/info
+
+# List all routes with access rules
+curl http://localhost:8080/_dev/routes
+
+# View entity schema
+curl http://localhost:8080/_dev/schema
+
+# Check database status
+curl http://localhost:8080/_dev/database
+
+# View WebSocket connections
+curl http://localhost:8080/_dev/websocket
+```
+
+Available endpoints: `/_dev`, `/_dev/info`, `/_dev/routes`, `/_dev/schema`, `/_dev/actions`, `/_dev/rules`, `/_dev/access`, `/_dev/views`, `/_dev/jobs`, `/_dev/messages`, `/_dev/database`, `/_dev/websocket`, `/_dev/config`
 
 ### Testing
 ```bash

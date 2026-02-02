@@ -264,13 +264,15 @@ export function Sidebar({
                 : "Offline"}
             </div>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-white/10"
-          >
-            <Settings className="h-4 w-4" />
-          </Button>
+          <Link to="/settings">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-white/10"
+            >
+              <Settings className="h-4 w-4" />
+            </Button>
+          </Link>
           {onLogout && (
             <Button
               variant="ghost"

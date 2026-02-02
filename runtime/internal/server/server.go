@@ -256,6 +256,7 @@ func New(cfg *Config) (*Server, error) {
 	}
 
 	s.setupRoutes()
+	s.setupDevRoutes()
 
 	return s, nil
 }

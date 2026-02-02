@@ -9,7 +9,8 @@ FORGE is a **compiler + sealed runtime** that compiles declarative application s
 3. [CLI Reference](./cli-reference.md) - All CLI commands
 4. [Runtime Reference](./runtime-reference.md) - How the runtime works
 5. [SDK Reference](./sdk-reference.md) - Using @forge/client and @forge/react
-6. [Examples](./examples.md) - Real-world examples
+6. [Dev Info Page](./dev-info.md) - Development dashboard and debugging tools
+7. [Examples](./examples.md) - Real-world examples
 
 ## Quick Start
 

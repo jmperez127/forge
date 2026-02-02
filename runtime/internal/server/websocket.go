@@ -3,6 +3,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -120,6 +121,13 @@ func (h *Hub) Subscribe(client *Client, viewName string) {
 	client.mu.Lock()
 	client.subscriptions[viewName] = true
 	client.mu.Unlock()
+
+	// Log all current subscriptions for debugging
+	var allViews []string
+	for v := range h.viewSubs {
+		allViews = append(allViews, fmt.Sprintf("%s(%d)", v, len(h.viewSubs[v])))
+	}
+	log.Printf("[WS] Client subscribed to %s, total subscribers: %d, all views: %v", viewName, len(h.viewSubs[viewName]), allViews)
 }
 
 // Unsubscribe removes a client from a view subscription.
@@ -140,9 +148,12 @@ func (h *Hub) Unsubscribe(client *Client, viewName string) {
 func (h *Hub) BroadcastToView(viewName string, data interface{}) {
 	h.mu.RLock()
 	clients := h.viewSubs[viewName]
+	clientCount := len(clients)
 	h.mu.RUnlock()
 
-	if len(clients) == 0 {
+	log.Printf("[WS] Broadcasting to view %s, %d clients subscribed", viewName, clientCount)
+
+	if clientCount == 0 {
 		return
 	}
 
@@ -154,17 +165,20 @@ func (h *Hub) BroadcastToView(viewName string, data interface{}) {
 
 	msgBytes, err := json.Marshal(msg)
 	if err != nil {
-		log.Printf("error marshaling broadcast: %v", err)
+		log.Printf("[WS] Error marshaling broadcast: %v", err)
 		return
 	}
 
+	sentCount := 0
 	for client := range clients {
 		select {
 		case client.send <- msgBytes:
+			sentCount++
 		default:
-			// Client buffer full, skip
+			log.Printf("[WS] Client buffer full, skipping")
 		}
 	}
+	log.Printf("[WS] Broadcast sent to %d clients", sentCount)
 }
 
 // WSMessage represents a WebSocket message.
@@ -291,6 +305,23 @@ func (c *Client) sendError(errMsg string) {
 		default:
 		}
 	}
+}
+
+// ClientCount returns the number of connected clients.
+func (h *Hub) ClientCount() int {
+	return len(h.clients)
+}
+
+// SubscriptionCounts returns the number of subscribers per view.
+func (h *Hub) SubscriptionCounts() map[string]int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	counts := make(map[string]int)
+	for view, clients := range h.viewSubs {
+		counts[view] = len(clients)
+	}
+	return counts
 }
 
 // ServeWs handles WebSocket requests from the peer.

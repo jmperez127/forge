@@ -152,6 +152,7 @@ forge run
 - `DATABASE_URL` - PostgreSQL connection URL
 - `REDIS_URL` - Redis connection URL (for job queue)
 - `LOG_LEVEL` - Logging level: debug, info, warn, error
+- `FORGE_ENV` - Environment: development, test, production (default: development)
 
 **Example:**
 ```bash
@@ -170,6 +171,37 @@ PUT  /api/entities/{name}/{id}  # Update entity
 DEL  /api/entities/{name}/{id}  # Delete entity
 WS   /ws                        # WebSocket subscriptions
 ```
+
+**Development Mode Endpoints (FORGE_ENV=development):**
+```
+GET  /_dev                      # Dev dashboard
+GET  /_dev/info                 # App metadata
+GET  /_dev/routes               # API routes
+GET  /_dev/schema               # Entity schema
+GET  /_dev/actions              # Actions
+GET  /_dev/rules                # Business rules
+GET  /_dev/access               # Access policies
+GET  /_dev/views                # View definitions
+GET  /_dev/jobs                 # Jobs and hooks
+GET  /_dev/messages             # Message codes
+GET  /_dev/database             # Database status
+GET  /_dev/websocket            # WebSocket stats
+GET  /_dev/config               # Configuration (secrets masked)
+```
+
+**Usage:**
+```bash
+# Open dashboard in browser
+open http://localhost:8080/_dev
+
+# Get routes as JSON
+curl http://localhost:8080/_dev/routes
+
+# Pipe to jq for filtering
+curl http://localhost:8080/_dev/schema | jq '.entities.Ticket'
+```
+
+See [Dev Info Page](./dev-info.md) for full documentation.
 
 ---
 

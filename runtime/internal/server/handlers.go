@@ -776,22 +776,78 @@ func (s *Server) executeCreateAction(ctx context.Context, w http.ResponseWriter,
 
 // broadcastEntityChange broadcasts entity changes to WebSocket subscribers
 func (s *Server) broadcastEntityChange(entityName, operation string, record map[string]interface{}) {
+	s.logger.Info("[BROADCAST] Entity change", "entity", entityName, "operation", operation)
+
 	// Broadcast to entity-specific subscribers (e.g., "Message:create")
 	s.hub.BroadcastToView(fmt.Sprintf("%s:%s", entityName, operation), record)
 
 	// For Messages, also broadcast to channel-specific feed
 	if entityName == "Message" {
-		if channelID, ok := record["channel_id"].(string); ok {
-			s.hub.BroadcastToView(fmt.Sprintf("MessageFeed:%s", channelID), record)
+		channelID := getStringField(record, "channel_id")
+		if channelID != "" {
+			viewKey := fmt.Sprintf("MessageFeed:%s", channelID)
+			s.logger.Info("[BROADCAST] Broadcasting to MessageFeed", "viewKey", viewKey)
+			s.hub.BroadcastToView(viewKey, record)
+		} else {
+			s.logger.Warn("[BROADCAST] Message missing channel_id", "record", record)
+		}
+	}
+
+	// For Threads, broadcast to parent message thread list AND trigger message feed refresh
+	if entityName == "Thread" {
+		parentID := getStringField(record, "parent_id")
+		if parentID != "" {
+			viewKey := fmt.Sprintf("ThreadList:%s", parentID)
+			s.logger.Info("[BROADCAST] Broadcasting to ThreadList", "viewKey", viewKey)
+			s.hub.BroadcastToView(viewKey, record)
+
+			// Also need to refresh the message feed to update thread counts
+			// Get the parent message to find its channel
+			ctx := context.Background()
+			query := "SELECT channel_id FROM messages WHERE id = $1"
+			rows, err := s.db.Query(ctx, query, parentID)
+			if err == nil {
+				defer rows.Close()
+				if rows.Next() {
+					values, err := rows.Values()
+					if err == nil && len(values) > 0 {
+						channelID := fmt.Sprintf("%v", convertValue(values[0]))
+						if channelID != "" && channelID != "<nil>" {
+							viewKey := fmt.Sprintf("MessageFeed:%s", channelID)
+							s.logger.Info("[BROADCAST] Broadcasting Thread to MessageFeed", "viewKey", viewKey)
+							s.hub.BroadcastToView(viewKey, record)
+						}
+					}
+				}
+			} else {
+				s.logger.Error("[BROADCAST] Failed to get parent message channel", "error", err)
+			}
+		} else {
+			s.logger.Warn("[BROADCAST] Thread missing parent_id", "record", record)
 		}
 	}
 
 	// For Channels, broadcast to workspace-specific list
 	if entityName == "Channel" {
-		if workspaceID, ok := record["workspace_id"].(string); ok {
-			s.hub.BroadcastToView(fmt.Sprintf("ChannelList:%s", workspaceID), record)
+		workspaceID := getStringField(record, "workspace_id")
+		if workspaceID != "" {
+			viewKey := fmt.Sprintf("ChannelList:%s", workspaceID)
+			s.logger.Info("[BROADCAST] Broadcasting to ChannelList", "viewKey", viewKey)
+			s.hub.BroadcastToView(viewKey, record)
 		}
 	}
+}
+
+// getStringField safely extracts a string field from a record
+func getStringField(record map[string]interface{}, field string) string {
+	if v, ok := record[field]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+		// Handle other types by converting to string
+		return fmt.Sprintf("%v", v)
+	}
+	return ""
 }
 
 func (s *Server) executeUpdateAction(ctx context.Context, w http.ResponseWriter, database db.Database, entity *EntitySchema, input map[string]interface{}, updates map[string]interface{}) {

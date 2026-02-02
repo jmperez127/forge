@@ -148,7 +148,26 @@ DATABASE_URL="postgres://localhost:5432/todo_dev?sslmode=disable" forge run
 
 The server starts at `http://localhost:8080`.
 
-### 10. Test the API
+### 10. Explore the Dev Dashboard
+
+In development mode, FORGE provides a built-in dashboard at `http://localhost:8080/_dev` showing:
+- All API routes
+- Entity schema with fields and relations
+- Business rules and access policies
+- Runtime configuration
+
+```bash
+# Open in browser
+open http://localhost:8080/_dev
+
+# Or use the CLI
+forge dev routes    # Show routes
+forge dev schema    # Show entity schema
+```
+
+See [Dev Info Page](./dev-info.md) for full documentation.
+
+### 11. Test the API
 
 ```bash
 # Health check
@@ -161,6 +180,9 @@ curl -X POST http://localhost:8080/api/actions/create_task \
 
 # List tasks
 curl http://localhost:8080/api/views/TaskList
+
+# Check available routes via dev endpoint
+curl http://localhost:8080/_dev/routes
 ```
 
 ## Building the Frontend
@@ -258,5 +280,6 @@ myapp/
 ## Next Steps
 
 - Read the [Language Reference](./language-reference.md) to learn all syntax
+- Use the [Dev Info Page](./dev-info.md) to explore your app's schema and routes
 - Explore the [Helpdesk Example](../projects/helpdesk/) for a complete app
 - Set up [E2E Tests](../e2e/) for your app

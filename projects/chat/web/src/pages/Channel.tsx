@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { useMessageFeed, useSendMessage, useAuth } from "@/lib/forge/react";
 import type { Channel as ChannelType } from "@/lib/forge/client";
 import { Hash, Lock, Users, Settings, Loader2 } from "lucide-react";
@@ -9,6 +9,8 @@ import { Separator } from "@/components/ui/separator";
 import { Message } from "@/components/Message";
 import { MessageComposer } from "@/components/MessageComposer";
 import { TypingIndicator } from "@/components/TypingIndicator";
+import { ThreadPanel } from "@/components/ThreadPanel";
+import { ConnectionStatus } from "@/components/ConnectionStatus";
 import { formatDate } from "@/lib/utils";
 
 interface MessageData {
@@ -118,6 +120,17 @@ export function Channel() {
   const [typingUsers] = useState<string[]>([]);
   const handleTyping = useCallback(() => {}, []);
 
+  // Thread panel state
+  const [selectedThread, setSelectedThread] = useState<MessageData | null>(null);
+
+  const handleOpenThread = useCallback((message: MessageData) => {
+    setSelectedThread(message);
+  }, []);
+
+  const handleCloseThread = useCallback(() => {
+    setSelectedThread(null);
+  }, []);
+
   if (channelLoading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -148,7 +161,8 @@ export function Channel() {
   });
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full">
+      <div className="flex flex-1 flex-col min-w-0">
       {/* Channel header */}
       <div className="flex h-14 items-center justify-between border-b px-4">
         <div className="flex items-center gap-2">
@@ -168,12 +182,15 @@ export function Channel() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <ConnectionStatus />
           <Button variant="ghost" size="sm" className="gap-2">
             <Users className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon">
-            <Settings className="h-4 w-4" />
-          </Button>
+          <Link to="/settings">
+            <Button variant="ghost" size="icon">
+              <Settings className="h-4 w-4" />
+            </Button>
+          </Link>
         </div>
       </div>
 
@@ -237,6 +254,7 @@ export function Channel() {
                       reacted: r.user_reacted,
                     }))}
                     isOwn={message.author_id === currentUserId}
+                    onReply={() => handleOpenThread(message)}
                   />
                 ))}
               </div>
@@ -256,6 +274,23 @@ export function Channel() {
         onTyping={handleTyping}
         disabled={sendingMessage}
       />
+      </div>
+
+      {/* Thread panel */}
+      {selectedThread && channel && (
+        <ThreadPanel
+          message={{
+            id: selectedThread.id,
+            content: selectedThread.content,
+            author_id: selectedThread.author_id,
+            author_display_name: selectedThread.author_display_name,
+            author_avatar_url: selectedThread.author_avatar_url,
+            created_at: selectedThread.created_at,
+          }}
+          channelName={channel.name}
+          onClose={handleCloseThread}
+        />
+      )}
     </div>
   );
 }
