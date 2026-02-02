@@ -118,37 +118,36 @@ view TaskList {
 }
 ```
 
-### 7. Build Your App
-
-```bash
-forge build
-```
-
-This generates:
-- `.forge-runtime/artifact.json` - Runtime artifact
-- `.forge-runtime/schema.sql` - PostgreSQL schema
-- `.forge-runtime/sdk/client.ts` - TypeScript client
-- `.forge-runtime/sdk/react.tsx` - React hooks
-
-### 8. Set Up the Database
+### 7. Set Up the Database
 
 ```bash
 # Create database
 createdb todo_dev
-
-# Apply schema
-psql todo_dev -f .forge-runtime/schema.sql
 ```
 
-### 9. Start the Runtime
+### 8. Start Development Mode
 
 ```bash
-DATABASE_URL="postgres://localhost:5432/todo_dev?sslmode=disable" forge run
+DATABASE_URL="postgres://localhost:5432/todo_dev?sslmode=disable" forge dev
 ```
 
-The server starts at `http://localhost:8080`.
+This single command:
+- Builds your `.forge` files
+- Applies the schema to the database
+- Starts the runtime server at `http://localhost:8080`
+- Watches for file changes and auto-rebuilds
 
-### 10. Explore the Dev Dashboard
+Now edit any `.forge` file and see changes apply automatically!
+
+> **Tip:** Keep `forge dev` running while you develop. Build errors appear in the terminal without stopping the server.
+
+**Generated Files (in `.forge-runtime/`):**
+- `artifact.json` - Runtime artifact
+- `schema.sql` - PostgreSQL schema
+- `sdk/client.ts` - TypeScript client
+- `sdk/react.tsx` - React hooks
+
+### 9. Explore the Dev Dashboard
 
 In development mode, FORGE provides a built-in dashboard at `http://localhost:8080/_dev` showing:
 - All API routes
@@ -167,7 +166,7 @@ forge dev schema    # Show entity schema
 
 See [Dev Info Page](./dev-info.md) for full documentation.
 
-### 11. Test the API
+### 10. Test the API
 
 ```bash
 # Health check

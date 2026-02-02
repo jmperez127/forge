@@ -255,13 +255,34 @@ cd runtime && go build -o ../bin/forge-runtime ./cmd/forge-runtime
 ./bin/forge init myapp
 ./bin/forge check
 ./bin/forge build
+./bin/forge dev
 ./bin/forge run
 
 # Build helpdesk example
 cd projects/helpdesk/spec && ../../../bin/forge build
 ```
 
-### Starting the Server
+### Development Mode (Hot Reload)
+
+```bash
+# Start development server with hot reload
+cd projects/helpdesk/spec
+forge dev
+
+# Output:
+# Starting FORGE development server...
+# Build successful!
+# ...
+# Watching for changes...
+#
+# [edit app.forge]
+# File changed: app.forge
+# Rebuild successful!
+```
+
+This single command builds, runs the server, and watches for changes. Edit any `.forge` file and changes apply automatically without restarting.
+
+### Starting the Server (Manual)
 
 ```bash
 # Development mode (default) - enables /_dev info pages

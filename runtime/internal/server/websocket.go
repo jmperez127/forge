@@ -307,6 +307,28 @@ func (c *Client) sendError(errMsg string) {
 	}
 }
 
+// BroadcastToAll sends a message to all connected clients.
+func (h *Hub) BroadcastToAll(msgType string, data interface{}) {
+	msg := WSMessage{
+		Type: msgType,
+		Data: data,
+	}
+
+	msgBytes, err := json.Marshal(msg)
+	if err != nil {
+		log.Printf("[WS] Error marshaling broadcast: %v", err)
+		return
+	}
+
+	for client := range h.clients {
+		select {
+		case client.send <- msgBytes:
+		default:
+			// Client buffer full, skip
+		}
+	}
+}
+
 // ClientCount returns the number of connected clients.
 func (h *Hub) ClientCount() int {
 	return len(h.clients)

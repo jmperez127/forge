@@ -117,6 +117,50 @@ Stats:
 
 ---
 
+### forge dev
+
+Start development server with hot reload. Watches `.forge` files and automatically rebuilds when changes are detected.
+
+```bash
+forge dev
+```
+
+**What it does:**
+1. Runs initial `forge build`
+2. Starts the runtime server with `FORGE_ENV=development`
+3. Watches for `.forge` file changes
+4. Rebuilds automatically on change
+5. Runtime hot-reloads the new artifact (no restart needed)
+
+**Environment Variables:**
+- `PORT` - Server port (default: 8080)
+- `DATABASE_URL` - PostgreSQL connection URL
+
+**Example:**
+```bash
+cd projects/helpdesk/spec
+DATABASE_URL="postgres://localhost/helpdesk" forge dev
+
+# Terminal output:
+# Starting FORGE development server...
+# Build successful!
+# ...
+# Watching for changes...
+
+# [edit entities.forge]
+# File changed: entities.forge
+# Rebuild successful!
+```
+
+**Error Handling:**
+- Build errors are displayed in terminal
+- Server continues running with last valid artifact
+- Fix the error and save again to trigger rebuild
+
+**Note:** Only available in development mode. For production, use `forge build` + `forge run` separately.
+
+---
+
 ### forge migrate
 
 Show or apply database migrations.
@@ -330,4 +374,17 @@ psql $DATABASE_URL -c "\dp"
 
 # Check generated types
 psql $DATABASE_URL -c "\dT+"
+```
+
+### Hot Reload Issues
+
+```bash
+# If hot reload stops working, check the terminal for errors
+
+# Restart dev mode
+Ctrl+C
+forge dev
+
+# Manual rebuild (if needed)
+forge build
 ```

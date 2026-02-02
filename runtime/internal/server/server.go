@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -35,10 +36,12 @@ type Server struct {
 	config       *Config
 	runtimeConf  *config.Config
 	artifact     *Artifact
+	artifactMu   sync.RWMutex // Protects artifact access
 	db           db.Database
 	router       *chi.Mux
 	hub          *Hub
 	logger       *slog.Logger
+	watcher      *ArtifactWatcher
 }
 
 // Artifact represents the loaded runtime artifact.
@@ -321,6 +324,9 @@ func (s *Server) Run() error {
 	// Start WebSocket hub
 	go s.hub.Run()
 
+	// Start artifact watcher for hot reload (development mode only)
+	s.startWatcher()
+
 	addr := fmt.Sprintf(":%d", s.config.Port)
 	srv := &http.Server{
 		Addr:    addr,
@@ -354,7 +360,7 @@ func (s *Server) Run() error {
 		close(done)
 	}()
 
-	s.logger.Info("starting server", "addr", addr, "app", s.artifact.AppName)
+	s.logger.Info("starting server", "addr", addr, "app", s.getArtifact().AppName)
 
 	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 		return err
@@ -366,10 +372,61 @@ func (s *Server) Run() error {
 
 // Close closes the server and releases resources.
 func (s *Server) Close() error {
+	if s.watcher != nil {
+		s.watcher.Stop()
+	}
 	if s.db != nil {
 		return s.db.Close()
 	}
 	return nil
+}
+
+// getArtifact returns the current artifact with read lock protection.
+func (s *Server) getArtifact() *Artifact {
+	s.artifactMu.RLock()
+	defer s.artifactMu.RUnlock()
+	return s.artifact
+}
+
+// ReloadArtifact reloads the artifact from disk and broadcasts the change.
+func (s *Server) ReloadArtifact() error {
+	artifactData, err := os.ReadFile(s.config.ArtifactPath)
+	if err != nil {
+		return fmt.Errorf("failed to read artifact: %w", err)
+	}
+
+	var newArtifact Artifact
+	if err := json.Unmarshal(artifactData, &newArtifact); err != nil {
+		return fmt.Errorf("failed to parse artifact: %w", err)
+	}
+
+	// Swap artifact atomically
+	s.artifactMu.Lock()
+	s.artifact = &newArtifact
+	s.artifactMu.Unlock()
+
+	s.logger.Info("artifact reloaded", "app", newArtifact.AppName, "version", newArtifact.Version)
+
+	// Broadcast reload event to all connected WebSocket clients
+	s.hub.BroadcastToAll("artifact_reload", map[string]string{
+		"app":     newArtifact.AppName,
+		"version": newArtifact.Version,
+	})
+
+	return nil
+}
+
+// startWatcher starts the artifact file watcher if in development mode.
+func (s *Server) startWatcher() {
+	env := os.Getenv("FORGE_ENV")
+	if env != "" && env != "development" {
+		return
+	}
+
+	s.watcher = NewArtifactWatcher(s.config.ArtifactPath, s.ReloadArtifact, s.logger)
+	if err := s.watcher.Start(); err != nil {
+		s.logger.Warn("failed to start artifact watcher", "error", err)
+	}
 }
 
 // Response types
@@ -408,15 +465,16 @@ func (s *Server) respondError(w http.ResponseWriter, status int, messages ...Mes
 // Handlers
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	artifact := s.getArtifact()
 	s.respond(w, http.StatusOK, map[string]string{
 		"status":  "healthy",
-		"app":     s.artifact.AppName,
-		"version": s.artifact.Version,
+		"app":     artifact.AppName,
+		"version": artifact.Version,
 	})
 }
 
 func (s *Server) handleArtifact(w http.ResponseWriter, r *http.Request) {
-	s.respond(w, http.StatusOK, s.artifact)
+	s.respond(w, http.StatusOK, s.getArtifact())
 }
 
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
