@@ -79,11 +79,22 @@ type Rows interface {
 	// Scan copies the current row's columns into dest.
 	Scan(dest ...any) error
 
+	// Values returns all column values for the current row.
+	Values() ([]any, error)
+
+	// FieldDescriptions returns metadata about the columns.
+	FieldDescriptions() []FieldDescription
+
 	// Close closes the rows, releasing resources.
 	Close() error
 
 	// Err returns any error encountered during iteration.
 	Err() error
+}
+
+// FieldDescription describes a column in a result set.
+type FieldDescription struct {
+	Name string
 }
 
 // Row represents a single row result.

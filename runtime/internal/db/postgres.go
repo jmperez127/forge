@@ -117,10 +117,42 @@ func (p *Postgres) Query(ctx context.Context, query string, args ...any) (Rows, 
 	}
 	defer conn.Release()
 
-	if err := p.setUserContext(ctx, conn); err != nil {
-		return nil, err
+	// If we have a user context, we need to run in a transaction so SET LOCAL persists
+	if p.userID != nil {
+		// Begin transaction
+		if _, err := conn.Exec(ctx, "BEGIN"); err != nil {
+			return nil, err
+		}
+
+		// Set user context
+		if err := p.setUserContext(ctx, conn); err != nil {
+			conn.Exec(ctx, "ROLLBACK")
+			return nil, err
+		}
+
+		// Execute query
+		rows, err := conn.Query(ctx, query, args...)
+		if err != nil {
+			conn.Exec(ctx, "ROLLBACK")
+			return nil, err
+		}
+
+		// Collect all rows before committing (needed because rows iterator needs the transaction)
+		collectedRows, err := collectRows(rows)
+		if err != nil {
+			conn.Exec(ctx, "ROLLBACK")
+			return nil, err
+		}
+
+		// Commit transaction
+		if _, err := conn.Exec(ctx, "COMMIT"); err != nil {
+			return nil, err
+		}
+
+		return collectedRows, nil
 	}
 
+	// No user context - direct query
 	rows, err := conn.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -153,10 +185,35 @@ func (p *Postgres) Exec(ctx context.Context, query string, args ...any) (Result,
 	}
 	defer conn.Release()
 
-	if err := p.setUserContext(ctx, conn); err != nil {
-		return nil, err
+	// If we have a user context, we need to run in a transaction so SET LOCAL persists
+	if p.userID != nil {
+		// Begin transaction
+		if _, err := conn.Exec(ctx, "BEGIN"); err != nil {
+			return nil, err
+		}
+
+		// Set user context
+		if err := p.setUserContext(ctx, conn); err != nil {
+			conn.Exec(ctx, "ROLLBACK")
+			return nil, err
+		}
+
+		// Execute query
+		tag, err := conn.Exec(ctx, query, args...)
+		if err != nil {
+			conn.Exec(ctx, "ROLLBACK")
+			return nil, err
+		}
+
+		// Commit transaction
+		if _, err := conn.Exec(ctx, "COMMIT"); err != nil {
+			return nil, err
+		}
+
+		return &pgxResult{rowsAffected: tag.RowsAffected()}, nil
 	}
 
+	// No user context - direct query
 	tag, err := conn.Exec(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -188,15 +245,110 @@ func (p *Postgres) IsEmbedded() bool {
 	return false
 }
 
+// collectRows reads all rows from a pgx.Rows into memory.
+// This is needed when we need to close the transaction before returning rows.
+func collectRows(rows pgx.Rows) (*collectedRows, error) {
+	defer rows.Close()
+
+	fieldDescs := rows.FieldDescriptions()
+	fields := make([]FieldDescription, len(fieldDescs))
+	for i, f := range fieldDescs {
+		fields[i] = FieldDescription{Name: string(f.Name)}
+	}
+
+	var allValues [][]any
+	for rows.Next() {
+		values, err := rows.Values()
+		if err != nil {
+			return nil, err
+		}
+		allValues = append(allValues, values)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return &collectedRows{
+		fields:  fields,
+		values:  allValues,
+		current: -1,
+	}, nil
+}
+
+// collectedRows holds pre-fetched rows in memory.
+type collectedRows struct {
+	fields  []FieldDescription
+	values  [][]any
+	current int
+}
+
+func (r *collectedRows) Next() bool {
+	r.current++
+	return r.current < len(r.values)
+}
+
+func (r *collectedRows) Scan(dest ...any) error {
+	if r.current < 0 || r.current >= len(r.values) {
+		return fmt.Errorf("no current row")
+	}
+	row := r.values[r.current]
+	if len(dest) != len(row) {
+		return fmt.Errorf("scan target count mismatch: %d vs %d", len(dest), len(row))
+	}
+	for i, v := range row {
+		// Simple assignment - might need more sophisticated type handling
+		switch d := dest[i].(type) {
+		case *any:
+			*d = v
+		default:
+			return fmt.Errorf("unsupported scan destination type %T", d)
+		}
+	}
+	return nil
+}
+
+func (r *collectedRows) Values() ([]any, error) {
+	if r.current < 0 || r.current >= len(r.values) {
+		return nil, fmt.Errorf("no current row")
+	}
+	return r.values[r.current], nil
+}
+
+func (r *collectedRows) FieldDescriptions() []FieldDescription {
+	return r.fields
+}
+
+func (r *collectedRows) Close() error {
+	return nil
+}
+
+func (r *collectedRows) Err() error {
+	return nil
+}
+
 // pgxRows wraps pgx.Rows to implement the Rows interface.
 type pgxRows struct {
 	rows pgx.Rows
 }
 
-func (r *pgxRows) Next() bool        { return r.rows.Next() }
+func (r *pgxRows) Next() bool             { return r.rows.Next() }
 func (r *pgxRows) Scan(dest ...any) error { return r.rows.Scan(dest...) }
-func (r *pgxRows) Close() error      { r.rows.Close(); return nil }
-func (r *pgxRows) Err() error        { return r.rows.Err() }
+func (r *pgxRows) Close() error           { r.rows.Close(); return nil }
+func (r *pgxRows) Err() error             { return r.rows.Err() }
+
+func (r *pgxRows) Values() ([]any, error) {
+	return r.rows.Values()
+}
+
+func (r *pgxRows) FieldDescriptions() []FieldDescription {
+	pgxFields := r.rows.FieldDescriptions()
+	fields := make([]FieldDescription, len(pgxFields))
+	for i, f := range pgxFields {
+		fields[i] = FieldDescription{Name: string(f.Name)}
+	}
+	return fields
+}
 
 // pgxRow wraps pgx.Row to implement the Row interface.
 type pgxRow struct {

@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -283,6 +284,9 @@ func (s *Server) setupRoutes() {
 		})
 	})
 
+	// Auth middleware - extract user from Authorization header
+	r.Use(s.authMiddleware)
+
 	// Health check
 	r.Get("/health", s.handleHealth)
 
@@ -414,177 +418,65 @@ func (s *Server) handleArtifact(w http.ResponseWriter, r *http.Request) {
 	s.respond(w, http.StatusOK, s.artifact)
 }
 
-func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
-	actionName := chi.URLParam(r, "action")
-
-	action, ok := s.artifact.Actions[actionName]
-	if !ok {
-		s.respondError(w, http.StatusNotFound, Message{
-			Code:    "ACTION_NOT_FOUND",
-			Message: fmt.Sprintf("action %s not found", actionName),
-		})
-		return
-	}
-
-	// Parse input
-	var input map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		s.respondError(w, http.StatusBadRequest, Message{
-			Code:    "INVALID_INPUT",
-			Message: "invalid JSON input",
-		})
-		return
-	}
-
-	s.logger.Info("action.started", "action", actionName, "input", input)
-
-	// TODO: Execute action with rules and access control
-	// For now, just acknowledge
-	_ = action
-
-	s.logger.Info("action.completed", "action", actionName)
-
-	s.respond(w, http.StatusOK, map[string]string{
-		"message": fmt.Sprintf("action %s executed", actionName),
-	})
-}
-
-func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
-	viewName := chi.URLParam(r, "view")
-
-	view, ok := s.artifact.Views[viewName]
-	if !ok {
-		s.respondError(w, http.StatusNotFound, Message{
-			Code:    "VIEW_NOT_FOUND",
-			Message: fmt.Sprintf("view %s not found", viewName),
-		})
-		return
-	}
-
-	// TODO: Execute view query with access control
-	// For now, return empty array
-	_ = view
-
-	s.respond(w, http.StatusOK, []interface{}{})
-}
-
-func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
-	entityName := chi.URLParam(r, "entity")
-
-	entity, ok := s.artifact.Entities[entityName]
-	if !ok {
-		s.respondError(w, http.StatusNotFound, Message{
-			Code:    "ENTITY_NOT_FOUND",
-			Message: fmt.Sprintf("entity %s not found", entityName),
-		})
-		return
-	}
-
-	// TODO: Query database with access control
-	_ = entity
-
-	s.respond(w, http.StatusOK, []interface{}{})
-}
-
-func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
-	entityName := chi.URLParam(r, "entity")
-	id := chi.URLParam(r, "id")
-
-	entity, ok := s.artifact.Entities[entityName]
-	if !ok {
-		s.respondError(w, http.StatusNotFound, Message{
-			Code:    "ENTITY_NOT_FOUND",
-			Message: fmt.Sprintf("entity %s not found", entityName),
-		})
-		return
-	}
-
-	// TODO: Query database with access control
-	_ = entity
-	_ = id
-
-	s.respondError(w, http.StatusNotFound, Message{
-		Code:    "NOT_FOUND",
-		Message: "record not found",
-	})
-}
-
-func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
-	entityName := chi.URLParam(r, "entity")
-
-	entity, ok := s.artifact.Entities[entityName]
-	if !ok {
-		s.respondError(w, http.StatusNotFound, Message{
-			Code:    "ENTITY_NOT_FOUND",
-			Message: fmt.Sprintf("entity %s not found", entityName),
-		})
-		return
-	}
-
-	var input map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		s.respondError(w, http.StatusBadRequest, Message{
-			Code:    "INVALID_INPUT",
-			Message: "invalid JSON input",
-		})
-		return
-	}
-
-	// TODO: Insert into database with rules and access control
-	_ = entity
-
-	s.respond(w, http.StatusCreated, input)
-}
-
-func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
-	entityName := chi.URLParam(r, "entity")
-	id := chi.URLParam(r, "id")
-
-	entity, ok := s.artifact.Entities[entityName]
-	if !ok {
-		s.respondError(w, http.StatusNotFound, Message{
-			Code:    "ENTITY_NOT_FOUND",
-			Message: fmt.Sprintf("entity %s not found", entityName),
-		})
-		return
-	}
-
-	var input map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		s.respondError(w, http.StatusBadRequest, Message{
-			Code:    "INVALID_INPUT",
-			Message: "invalid JSON input",
-		})
-		return
-	}
-
-	// TODO: Update in database with rules and access control
-	_ = entity
-	_ = id
-
-	s.respond(w, http.StatusOK, input)
-}
-
-func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
-	entityName := chi.URLParam(r, "entity")
-	id := chi.URLParam(r, "id")
-
-	entity, ok := s.artifact.Entities[entityName]
-	if !ok {
-		s.respondError(w, http.StatusNotFound, Message{
-			Code:    "ENTITY_NOT_FOUND",
-			Message: fmt.Sprintf("entity %s not found", entityName),
-		})
-		return
-	}
-
-	// TODO: Delete from database with rules and access control
-	_ = entity
-	_ = id
-
-	s.respond(w, http.StatusOK, nil)
-}
-
 func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	ServeWs(s.hub, w, r)
+}
+
+// userContextKey is the context key for user ID
+type userContextKey struct{}
+
+// authMiddleware extracts user ID from Authorization header
+func (s *Server) authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		if auth == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Extract Bearer token
+		if len(auth) > 7 && auth[:7] == "Bearer " {
+			token := auth[7:]
+			// Decode base64 JWT payload (simple mock JWT for testing)
+			if decoded, err := base64Decode(token); err == nil {
+				var claims map[string]interface{}
+				if err := json.Unmarshal(decoded, &claims); err == nil {
+					if sub, ok := claims["sub"].(string); ok {
+						// Add user ID to context
+						ctx := context.WithValue(r.Context(), userContextKey{}, sub)
+						r = r.WithContext(ctx)
+					}
+				}
+			}
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+// getUserID extracts user ID from request context
+func getUserID(r *http.Request) string {
+	if id, ok := r.Context().Value(userContextKey{}).(string); ok {
+		return id
+	}
+	return ""
+}
+
+// base64Decode decodes a base64 string (handles both standard and URL-safe)
+func base64Decode(s string) ([]byte, error) {
+	// Add padding if needed
+	switch len(s) % 4 {
+	case 2:
+		s += "=="
+	case 3:
+		s += "="
+	}
+
+	// Try standard base64 first
+	if decoded, err := base64.StdEncoding.DecodeString(s); err == nil {
+		return decoded, nil
+	}
+
+	// Try URL-safe base64
+	return base64.URLEncoding.DecodeString(s)
 }
