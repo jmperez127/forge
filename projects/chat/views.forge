@@ -1,0 +1,22 @@
+# Chat Views
+# Simplified for compiler compatibility
+
+view WorkspaceList {
+  source: Workspace
+  fields: id, name, slug
+}
+
+view ChannelList {
+  source: Channel
+  fields: id, name, slug, visibility, is_default
+}
+
+view MessageFeed {
+  source: Message
+  fields: id, content, edited, author.display_name, author.avatar_url
+}
+
+view ThreadList {
+  source: Thread
+  fields: id, content, edited, author.display_name
+}

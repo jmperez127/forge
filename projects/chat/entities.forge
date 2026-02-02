@@ -1,0 +1,40 @@
+# Chat Entities
+# Simplified for compiler compatibility
+
+entity User {
+  email: string unique
+  password_hash: string
+  display_name: string length <= 50
+  avatar_url: string
+  role: enum(owner, admin, member) = member
+}
+
+entity Workspace {
+  name: string length <= 50
+  slug: string unique length <= 30
+  description: string
+}
+
+entity Channel {
+  name: string length <= 80
+  slug: string length <= 80
+  description: string
+  visibility: enum(public, private) = public
+  is_default: bool = false
+  archived: bool = false
+}
+
+entity Message {
+  content: string
+  edited: bool = false
+  deleted: bool = false
+}
+
+entity Thread {
+  content: string
+  edited: bool = false
+}
+
+entity Reaction {
+  emoji: string length <= 50
+}

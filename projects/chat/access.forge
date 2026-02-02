@@ -1,0 +1,32 @@
+# Chat Access Control
+# Using simple patterns the compiler supports
+
+access User {
+  read: user.role == admin or user.id == id
+  write: user.role == admin or user.id == id
+}
+
+access Workspace {
+  read: user in members
+  write: user == owner
+}
+
+access Channel {
+  read: user in members
+  write: user == creator
+}
+
+access Message {
+  read: user == author
+  write: user == author
+}
+
+access Thread {
+  read: user == author
+  write: user == author
+}
+
+access Reaction {
+  read: true
+  write: true
+}

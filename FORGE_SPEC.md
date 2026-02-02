@@ -250,6 +250,97 @@ Views:
 
 ---
 
+## 12.1 Presence
+
+Presence tracks **ephemeral user state** with automatic expiration.
+
+```text
+presence UserPresence {
+  source: User
+  status: enum(online, away, dnd, offline) = offline
+  custom_status: string optional
+  last_seen: time
+  ttl: 5m
+  scope: workspace
+}
+```
+
+Presence:
+- Auto-expires to default state after TTL without refresh
+- Stored in Redis/memory, NOT PostgreSQL
+- Scoped to a relation (workspace, channel, etc.)
+- Respects access rules via scope
+- Queryable via views
+
+### Presence Views
+
+```text
+view OnlineUsers {
+  source: UserPresence
+  filter: workspace == param.workspace and status != offline
+  fields: user.id, user.display_name, status
+  realtime: true
+}
+```
+
+### Presence Actions
+
+```text
+action update_presence {
+  input {
+    status: enum(online, away, dnd)
+  }
+  updates: UserPresence
+}
+```
+
+---
+
+## 12.2 Ephemeral
+
+Ephemeral defines **broadcast-only state** that never persists.
+
+```text
+ephemeral Typing {
+  user: User
+  channel: Channel optional
+  dm: DirectMessage optional
+  ttl: 3s
+}
+```
+
+Ephemeral:
+- Never written to storage
+- Broadcast via WebSocket only
+- Client-side TTL expiration
+- No delivery guarantees
+- Fire-and-forget semantics
+
+### Ephemeral Views
+
+```text
+view ChannelTyping {
+  source: Typing
+  filter: channel == param.channel
+  fields: user.id, user.display_name
+  realtime: true
+}
+```
+
+### Ephemeral Actions
+
+```text
+action start_typing {
+  input {
+    channel: Channel optional
+    dm: DirectMessage optional
+  }
+  creates: Typing
+}
+```
+
+---
+
 ## 13. Frontend SDK
 
 FORGE generates:

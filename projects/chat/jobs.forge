@@ -1,0 +1,13 @@
+# Chat Jobs
+
+job notify_channel {
+  input: Message
+  needs: Message.channel.members
+  effect: notification.send
+}
+
+job create_default_channel {
+  input: Workspace
+  needs: Workspace.owner
+  effect: create_channel
+}

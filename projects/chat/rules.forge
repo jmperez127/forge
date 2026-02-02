@@ -1,0 +1,11 @@
+# Chat Business Rules
+
+rule Message.update {
+  forbid if deleted == true
+    emit MESSAGE_DELETED
+}
+
+rule Channel.update {
+  forbid if is_default == true
+    emit CANNOT_ARCHIVE_DEFAULT
+}

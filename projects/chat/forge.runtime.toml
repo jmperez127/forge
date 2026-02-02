@@ -1,0 +1,142 @@
+# FORGE Runtime Configuration for Chat Application
+#
+# This file configures the RUNTIME, not the application spec.
+# Values prefixed with "env:" are read from environment variables.
+
+# =============================================================================
+# Database Configuration
+# =============================================================================
+[database]
+adapter = "embedded"
+
+[database.embedded]
+data_dir = ".forge-runtime/data"
+port = 5433
+
+[database.postgres]
+url = "env:DATABASE_URL"
+pool_size = 20
+ssl_mode = "prefer"
+
+# =============================================================================
+# Presence Configuration (NEW)
+# =============================================================================
+[presence]
+# Backend for ephemeral presence data
+# Options: "memory" (dev), "redis" (prod)
+backend = "memory"
+
+[presence.redis]
+url = "env:REDIS_URL"
+
+# Default TTL for presence (can be overridden per-presence type)
+default_ttl = "5m"
+
+# =============================================================================
+# Email Configuration
+# =============================================================================
+[email]
+provider = "smtp"
+host = "env:SMTP_HOST"
+port = 587
+user = "env:SMTP_USER"
+password = "env:SMTP_PASS"
+from = "noreply@chat.example.com"
+
+# =============================================================================
+# Push Notifications
+# =============================================================================
+[push]
+provider = "fcm"
+credentials = "env:FCM_CREDENTIALS"
+
+# =============================================================================
+# Jobs Configuration
+# =============================================================================
+[jobs]
+backend = "memory"
+concurrency = 10
+
+[jobs.redis]
+url = "env:REDIS_URL"
+concurrency = 20
+
+# =============================================================================
+# Authentication Configuration
+# =============================================================================
+[auth]
+provider = "jwt"
+
+[auth.jwt]
+secret = "env:JWT_SECRET"
+issuer = "chat"
+expiry_hours = 168  # 7 days
+
+# Password hashing
+[auth.password]
+algorithm = "argon2id"
+memory = 65536
+iterations = 3
+parallelism = 4
+
+# =============================================================================
+# WebSocket Configuration
+# =============================================================================
+[websocket]
+# Heartbeat interval for presence
+heartbeat_interval = "30s"
+
+# Connection timeout
+timeout = "60s"
+
+# Max connections per user
+max_connections_per_user = 5
+
+# =============================================================================
+# Rate Limiting
+# =============================================================================
+[rate_limit]
+enabled = true
+
+# Messages per minute per user
+messages_per_minute = 60
+
+# API requests per minute per user
+api_requests_per_minute = 300
+
+# =============================================================================
+# Environment-Specific Overrides
+# =============================================================================
+
+[environments.development]
+# Uses embedded PostgreSQL and in-memory presence
+
+[environments.test]
+[environments.test.database]
+adapter = "embedded"
+[environments.test.database.embedded]
+ephemeral = true
+
+[environments.test.presence]
+backend = "memory"
+
+[environments.test.jobs]
+backend = "memory"
+
+[environments.test.rate_limit]
+enabled = false
+
+[environments.production]
+[environments.production.database]
+adapter = "postgres"
+[environments.production.database.postgres]
+url = "env:DATABASE_URL"
+pool_size = 50
+ssl_mode = "require"
+
+[environments.production.presence]
+backend = "redis"
+
+[environments.production.jobs]
+backend = "redis"
+concurrency = 50

@@ -343,6 +343,9 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	cols := rows.FieldDescriptions()
 	record := rowToMap(cols, row)
 
+	// Broadcast to subscribed clients
+	s.broadcastEntityChange(entityName, "create", record)
+
 	s.respond(w, http.StatusCreated, record)
 }
 
@@ -462,6 +465,9 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	cols := rows.FieldDescriptions()
 	record := rowToMap(cols, row)
 
+	// Broadcast to subscribed clients
+	s.broadcastEntityChange(entityName, "update", record)
+
 	s.respond(w, http.StatusOK, record)
 }
 
@@ -509,6 +515,9 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+
+	// Broadcast to subscribed clients
+	s.broadcastEntityChange(entityName, "delete", map[string]interface{}{"id": id})
 
 	s.respond(w, http.StatusOK, nil)
 }
@@ -759,7 +768,30 @@ func (s *Server) executeCreateAction(ctx context.Context, w http.ResponseWriter,
 	cols := rows.FieldDescriptions()
 	record := rowToMap(cols, row)
 
+	// Broadcast to subscribed clients
+	s.broadcastEntityChange(entity.Name, "create", record)
+
 	s.respond(w, http.StatusCreated, record)
+}
+
+// broadcastEntityChange broadcasts entity changes to WebSocket subscribers
+func (s *Server) broadcastEntityChange(entityName, operation string, record map[string]interface{}) {
+	// Broadcast to entity-specific subscribers (e.g., "Message:create")
+	s.hub.BroadcastToView(fmt.Sprintf("%s:%s", entityName, operation), record)
+
+	// For Messages, also broadcast to channel-specific feed
+	if entityName == "Message" {
+		if channelID, ok := record["channel_id"].(string); ok {
+			s.hub.BroadcastToView(fmt.Sprintf("MessageFeed:%s", channelID), record)
+		}
+	}
+
+	// For Channels, broadcast to workspace-specific list
+	if entityName == "Channel" {
+		if workspaceID, ok := record["workspace_id"].(string); ok {
+			s.hub.BroadcastToView(fmt.Sprintf("ChannelList:%s", workspaceID), record)
+		}
+	}
 }
 
 func (s *Server) executeUpdateAction(ctx context.Context, w http.ResponseWriter, database db.Database, entity *EntitySchema, input map[string]interface{}, updates map[string]interface{}) {
@@ -838,6 +870,9 @@ func (s *Server) executeUpdateAction(ctx context.Context, w http.ResponseWriter,
 	// Convert to map with proper type conversion
 	cols := rows.FieldDescriptions()
 	record := rowToMap(cols, row)
+
+	// Broadcast to subscribed clients
+	s.broadcastEntityChange(entity.Name, "update", record)
 
 	s.respond(w, http.StatusOK, record)
 }

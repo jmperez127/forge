@@ -1,0 +1,10 @@
+# Chat Application
+#
+# A Slack-like real-time messaging application demonstrating FORGE's
+# capabilities for real-time collaboration, multi-tenancy, and access control.
+
+app Chat {
+  auth: jwt
+  database: postgres
+  frontend: web
+}

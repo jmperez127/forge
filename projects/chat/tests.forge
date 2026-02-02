@@ -1,0 +1,13 @@
+# Chat Tests
+
+test Message.update {
+  given deleted = true
+  when update Message
+  expect reject MESSAGE_DELETED
+}
+
+test Channel.update {
+  given is_default = true
+  when update Channel
+  expect reject CANNOT_ARCHIVE_DEFAULT
+}

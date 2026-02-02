@@ -1,0 +1,9 @@
+# Chat Hooks
+
+hook Message.after_create {
+  enqueue notify_channel
+}
+
+hook Workspace.after_create {
+  enqueue create_default_channel
+}

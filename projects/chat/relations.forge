@@ -1,0 +1,18 @@
+# Chat Relations
+# Simplified for compiler compatibility
+
+relation Workspace.owner -> User
+relation Workspace.members -> User many
+
+relation Channel.workspace -> Workspace
+relation Channel.creator -> User
+relation Channel.members -> User many
+
+relation Message.channel -> Channel
+relation Message.author -> User
+
+relation Thread.parent -> Message
+relation Thread.author -> User
+
+relation Reaction.message -> Message
+relation Reaction.user -> User

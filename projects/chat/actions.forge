@@ -1,0 +1,42 @@
+# Chat Actions
+# Using simple patterns the compiler supports
+
+action create_workspace {
+  input: Workspace
+}
+
+action create_channel {
+  input: Channel
+}
+
+action join_channel {
+  input: Channel
+}
+
+action leave_channel {
+  input: Channel
+}
+
+action send_message {
+  input: Message
+}
+
+action edit_message {
+  input: Message
+}
+
+action delete_message {
+  input: Message
+}
+
+action reply_to_message {
+  input: Thread
+}
+
+action add_reaction {
+  input: Reaction
+}
+
+action remove_reaction {
+  input: Reaction
+}

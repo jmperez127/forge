@@ -1,0 +1,21 @@
+# Chat Messages
+
+message MESSAGE_DELETED {
+  level: error
+  default: "This message has been deleted."
+}
+
+message CANNOT_ARCHIVE_DEFAULT {
+  level: error
+  default: "The default channel cannot be archived."
+}
+
+message AUTH_INVALID {
+  level: error
+  default: "Invalid email or password."
+}
+
+message MESSAGE_SENT {
+  level: success
+  default: "Message sent."
+}
