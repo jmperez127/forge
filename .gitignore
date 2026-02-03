@@ -9,8 +9,9 @@ go.work.sum
 *.dll
 *.so
 *.dylib
-forge
-forge-runtime
+# CLI binaries (not the source directories)
+/forge
+/forge-runtime
 
 # Test binary, built with `go test -c`
 *.test
