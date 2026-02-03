@@ -303,8 +303,11 @@ forge dev                      # hot reload on file changes
 forge dev -port 3000
 
 # Show/apply migrations
-forge migrate                  # show pending migrations
-forge migrate -apply           # apply migrations (WIP)
+forge migrate                    # show pending migrations
+forge migrate -apply             # apply migrations to database
+forge migrate -apply -dry-run    # show what would be applied
+forge migrate -apply -verbose    # apply with detailed output
+forge migrate -database "url"    # override database URL
 ```
 
 ### Build Helpdesk Example
@@ -319,7 +322,7 @@ cd projects/helpdesk
 
 ```bash
 # Start development server with hot reload
-cd projects/helpdesk/spec
+cd projects/helpdesk
 forge dev
 
 # Output:
