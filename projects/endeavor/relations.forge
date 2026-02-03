@@ -1,0 +1,6 @@
+relation Project.owner -> User
+relation StateTransition.project -> Project
+relation StateTransition.initiated_by -> User
+relation WeeklyReview.owner -> User
+relation IntentionLog.project -> Project
+relation IntentionLog.changed_by -> User

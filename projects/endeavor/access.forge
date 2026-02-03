@@ -1,0 +1,24 @@
+access User {
+  read: user.id == id
+  write: user.id == id
+}
+
+access Project {
+  read: user == owner
+  write: user == owner
+}
+
+access StateTransition {
+  read: user == initiated_by
+  write: user == initiated_by
+}
+
+access WeeklyReview {
+  read: user == owner
+  write: user == owner
+}
+
+access IntentionLog {
+  read: user == changed_by
+  write: user == changed_by
+}

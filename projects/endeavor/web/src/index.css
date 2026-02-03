@@ -1,0 +1,178 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Calm, warm color palette - Light mode */
+    --background: 40 20% 98%;
+    --foreground: 30 10% 20%;
+
+    --card: 40 15% 96%;
+    --card-foreground: 30 10% 20%;
+
+    --muted: 40 10% 90%;
+    --muted-foreground: 30 8% 45%;
+
+    --primary: 150 20% 40%;
+    --primary-foreground: 40 20% 98%;
+
+    --border: 30 10% 85%;
+    --ring: 150 20% 40%;
+
+    /* State colors - neutral, value-based */
+    --state-threshold: 270 15% 45%;
+    --state-forge: 220 15% 35%;
+    --state-embodiment: 35 30% 50%;
+    --state-clearing: 150 20% 45%;
+  }
+
+  .dark {
+    /* Dark mode palette - calm, not harsh */
+    --background: 240 10% 10%;
+    --foreground: 40 15% 90%;
+
+    --card: 240 8% 14%;
+    --card-foreground: 40 15% 90%;
+
+    --muted: 240 6% 20%;
+    --muted-foreground: 40 10% 60%;
+
+    --primary: 150 25% 50%;
+    --primary-foreground: 240 10% 10%;
+
+    --border: 240 6% 25%;
+    --ring: 150 25% 50%;
+
+    /* State colors - dark mode variants */
+    --state-threshold: 270 20% 55%;
+    --state-forge: 220 20% 55%;
+    --state-embodiment: 35 40% 55%;
+    --state-clearing: 150 25% 50%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer components {
+  .state-column {
+    @apply flex flex-col min-h-[400px] rounded-lg p-4;
+    @apply transition-all duration-200;
+  }
+
+  .state-column-threshold {
+    @apply bg-gradient-to-b from-purple-50/30 to-violet-50/20;
+    @apply border border-purple-200/50;
+    @apply dark:from-purple-900/20 dark:to-violet-900/10;
+    @apply dark:border-purple-800/30;
+  }
+
+  .state-column-forge {
+    @apply bg-gradient-to-b from-slate-50 to-slate-100/50;
+    @apply border border-slate-200;
+    @apply dark:from-slate-800/50 dark:to-slate-900/30;
+    @apply dark:border-slate-700;
+  }
+
+  .state-column-embodiment {
+    @apply bg-gradient-to-b from-amber-50/50 to-orange-50/30;
+    @apply border border-amber-200/50;
+    @apply dark:from-amber-900/20 dark:to-orange-900/10;
+    @apply dark:border-amber-800/30;
+  }
+
+  .state-column-clearing {
+    @apply bg-gradient-to-b from-emerald-50/30 to-teal-50/20;
+    @apply border border-emerald-200/50;
+    @apply dark:from-emerald-900/20 dark:to-teal-900/10;
+    @apply dark:border-emerald-800/30;
+  }
+
+  .project-card {
+    @apply bg-white rounded-lg p-4 shadow-sm;
+    @apply border border-border/50;
+    @apply transition-all duration-200;
+    @apply cursor-grab active:cursor-grabbing;
+    @apply dark:bg-card;
+  }
+
+  .project-card:hover {
+    @apply shadow-md border-border;
+  }
+
+  .project-card.dragging {
+    @apply shadow-lg opacity-90 scale-105;
+    @apply ring-2 ring-primary/20;
+  }
+
+  .drop-indicator {
+    @apply h-1 bg-primary/30 rounded-full my-2;
+    @apply transition-all duration-150;
+  }
+
+  .north-star {
+    @apply font-serif italic text-muted-foreground text-sm;
+    @apply tracking-wide;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-muted rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-muted-foreground/30;
+}
+
+/* Focus styles */
+*:focus-visible {
+  @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+}
+
+/* Dialog animations */
+[data-state="open"] {
+  animation: dialog-in 0.2s ease-out;
+}
+
+[data-state="closed"] {
+  animation: dialog-out 0.15s ease-in;
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes dialog-out {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96) translateY(4px);
+  }
+}

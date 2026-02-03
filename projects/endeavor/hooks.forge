@@ -1,0 +1,7 @@
+hook Project.after_create {
+  enqueue welcome_project
+}
+
+hook StateTransition.after_create {
+  enqueue log_transition
+}

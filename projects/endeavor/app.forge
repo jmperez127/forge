@@ -1,0 +1,4 @@
+app Endeavor {
+  auth: password
+  database: postgres
+}

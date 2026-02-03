@@ -1,0 +1,40 @@
+entity User {
+  email: string unique
+  password_hash: string
+  display_name: string length <= 50
+}
+
+entity Project {
+  name: string length <= 100
+  state: enum(threshold, forge, embodiment, clearing) = threshold
+  meaning: string
+  develops: string
+  intention: string
+  state_changed_at: time
+  review_at: time
+  archived: bool = false
+}
+
+entity StateTransition {
+  from_state: enum(threshold, forge, embodiment, clearing)
+  to_state: enum(threshold, forge, embodiment, clearing)
+  reflection: string
+  insight: string
+  transitioned_at: time
+}
+
+entity WeeklyReview {
+  week: string length <= 10
+  reflection: string
+  wins: string
+  challenges: string
+  next_intentions: string
+  energy_level: enum(low, moderate, high) = moderate
+}
+
+entity IntentionLog {
+  previous_intention: string
+  new_intention: string
+  reason: string
+  changed_at: time
+}

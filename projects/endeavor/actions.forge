@@ -1,0 +1,39 @@
+action create_project {
+  input: Project
+  creates: Project
+}
+
+action update_project {
+  input: Project
+  updates: Project
+}
+
+action archive_project {
+  input: Project
+  updates: Project
+}
+
+action restore_project {
+  input: Project
+  updates: Project
+}
+
+action transition_state {
+  input: StateTransition
+  creates: StateTransition
+}
+
+action update_intention {
+  input: IntentionLog
+  creates: IntentionLog
+}
+
+action set_review_date {
+  input: Project
+  updates: Project
+}
+
+action create_weekly_review {
+  input: WeeklyReview
+  creates: WeeklyReview
+}
