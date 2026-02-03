@@ -92,6 +92,16 @@ forge/
 │       ├── client/            # @forge/client
 │       └── react/             # @forge/react
 │
+├── vscode-forge/              # VS Code extension
+│   ├── syntaxes/              # TextMate grammar for .forge files
+│   │   └── forge.tmLanguage.json
+│   ├── language-configuration.json
+│   └── src/server/            # Language server (LSP)
+│
+├── website/                   # FORGE documentation website
+│   └── src/lib/
+│       └── syntax-highlight.ts  # Syntax highlighter based on TextMate grammar
+│
 ├── projects/                  # Real test applications
 │   ├── helpdesk/              # Example: Ticket system
 │   └── chat/                  # Example: Real-time chat
@@ -104,6 +114,28 @@ forge/
         ├── auth.ts            # Authentication helpers
         └── db.ts              # Database helpers
 ```
+
+---
+
+## IDE & Syntax Highlighting
+
+FORGE has first-class editor support through a TextMate grammar and Language Server Protocol (LSP) implementation.
+
+### VS Code Extension (`vscode-forge/`)
+
+- **TextMate Grammar** (`syntaxes/forge.tmLanguage.json`) - Provides syntax highlighting for `.forge` files
+- **Language Configuration** - Bracket matching, comment toggling, auto-indentation
+- **Language Server** (`src/server/`) - Provides diagnostics, completion, and go-to-definition
+
+### Web Syntax Highlighting
+
+The website and playground use the same token patterns as the VS Code extension for consistent highlighting:
+
+- **`website/src/lib/syntax-highlight.ts`** - JavaScript port of the TextMate grammar
+- Supports FORGE, SQL, TypeScript, and Bash highlighting
+- Used by the interactive playground at `/playground`
+
+When updating syntax highlighting, ensure both the TextMate grammar and the web highlighter stay in sync.
 
 ---
 

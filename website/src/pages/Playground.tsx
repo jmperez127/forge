@@ -16,18 +16,106 @@ import {
   BookOpen,
   ArrowLeft,
   RotateCcw,
+  CheckSquare,
+  Ticket,
+  FileText,
+  MessageSquare,
+  type LucideIcon,
 } from "lucide-react";
+import { highlightForge } from "../lib/syntax-highlight";
+import Prism from "prismjs";
+import "prismjs/components/prism-sql";
+import "prismjs/components/prism-typescript";
+import "prismjs/components/prism-json";
 
-// Examples
-const EXAMPLES = {
+// Prism theme styles for dark mode
+const prismStyles = `
+  .token.comment,
+  .token.prolog,
+  .token.doctype,
+  .token.cdata { color: #6b7280; font-style: italic; }
+  .token.punctuation { color: #94a3b8; }
+  .token.property,
+  .token.tag,
+  .token.boolean,
+  .token.number,
+  .token.constant,
+  .token.symbol { color: #f59e0b; }
+  .token.selector,
+  .token.attr-name,
+  .token.string,
+  .token.char,
+  .token.builtin { color: #10b981; }
+  .token.operator,
+  .token.entity,
+  .token.url,
+  .language-css .token.string,
+  .style .token.string { color: #f472b6; }
+  .token.atrule,
+  .token.attr-value,
+  .token.keyword { color: #a855f7; }
+  .token.function,
+  .token.class-name { color: #22d3ee; }
+  .token.regex,
+  .token.important,
+  .token.variable { color: #fb923c; }
+`;
+
+// Helper function to escape HTML
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+// Helper function to get highlighted code based on language
+function getHighlightedCode(code: string, language: string): string {
+  switch (language) {
+    case 'sql':
+      return Prism.highlight(code, Prism.languages.sql, 'sql');
+    case 'typescript':
+    case 'tsx':
+      return Prism.highlight(code, Prism.languages.typescript, 'typescript');
+    case 'json':
+      return Prism.highlight(code, Prism.languages.json, 'json');
+    case 'forge':
+      return highlightForge(code);
+    default:
+      return escapeHtml(code);
+  }
+}
+
+// Source file interface
+interface SourceFile {
+  name: string;
+  content: string;
+}
+
+// Examples with multiple files
+const EXAMPLES: Record<string, { title: string; icon: LucideIcon; description: string; files: SourceFile[] }> = {
   minimal: {
     title: "Minimal",
-    icon: "✨",
+    icon: CheckSquare,
     description: "The simplest FORGE app",
-    code: `# Minimal - The simplest FORGE app
+    files: [
+      {
+        name: "app.forge",
+        content: `# Minimal Todo App
 app Minimal {
   auth: token
   database: postgres
+}`,
+      },
+      {
+        name: "entities.forge",
+        content: `# Data Models
+
+entity User {
+  email: string unique
+  name: string
 }
 
 entity Task {
@@ -36,22 +124,25 @@ entity Task {
   created_at: time = now()
 }
 
-entity User {
-  email: string unique
-  name: string
-}
-
-relation Task.owner -> User
-
-access Task {
-  read: owner == user
-  write: owner == user
-}
+relation Task.owner -> User`,
+      },
+      {
+        name: "access.forge",
+        content: `# Access Control
 
 access User {
   read: true
   write: user == this
 }
+
+access Task {
+  read: owner == user
+  write: owner == user
+}`,
+      },
+      {
+        name: "views.forge",
+        content: `# Views & Actions
 
 view TaskList {
   source: Task
@@ -62,16 +153,25 @@ view TaskList {
 action toggle_task {
   input: Task
 }`,
+      },
+    ],
   },
   helpdesk: {
     title: "Helpdesk",
-    icon: "🎫",
+    icon: Ticket,
     description: "Ticket management system",
-    code: `# Helpdesk - Ticket Management
+    files: [
+      {
+        name: "app.forge",
+        content: `# Helpdesk - Ticket Management
 app Helpdesk {
   auth: oauth
   database: postgres
-}
+}`,
+      },
+      {
+        name: "entities.forge",
+        content: `# Core Entities
 
 entity Organization {
   name: string
@@ -92,20 +192,48 @@ entity Ticket {
   created_at: time = now()
 }
 
+# Relations
 relation User.organization -> Organization
 relation Ticket.author -> User
 relation Ticket.assignee -> User
-relation Ticket.organization -> Organization
+relation Ticket.organization -> Organization`,
+      },
+      {
+        name: "rules.forge",
+        content: `# Business Rules
 
 rule Ticket.update {
   forbid if status == closed
     emit TICKET_CLOSED
 }
 
+rule Ticket.assign {
+  require if user.role == agent or user.role == admin
+    emit NOT_AUTHORIZED
+}`,
+      },
+      {
+        name: "access.forge",
+        content: `# Access Control Policies
+
+access Organization {
+  read: user in members
+  write: user.role == admin
+}
+
+access User {
+  read: true
+  write: user == this or user.role == admin
+}
+
 access Ticket {
   read: user in organization.members
   write: user == author or user == assignee
-}
+}`,
+      },
+      {
+        name: "actions.forge",
+        content: `# Actions
 
 action close_ticket {
   input: Ticket
@@ -116,47 +244,115 @@ action assign_ticket {
   params: assignee_id uuid
 }
 
+action escalate_ticket {
+  input: Ticket
+  params: priority enum(high, urgent)
+}`,
+      },
+      {
+        name: "hooks.forge",
+        content: `# Lifecycle Hooks & Jobs
+
 hook Ticket.after_create {
   enqueue notify_agent
 }
 
+hook Ticket.after_update {
+  enqueue notify_author
+}
+
 job notify_agent {
   input: Ticket
+  needs: Ticket.organization.members where role == agent
   effect: email.send
 }
 
+job notify_author {
+  input: Ticket
+  effect: email.send
+}`,
+      },
+      {
+        name: "views.forge",
+        content: `# Views
+
 view TicketList {
   source: Ticket
-  fields: id, subject, status, priority, author.name
+  fields: id, subject, status, priority, author.name, assignee.name
+  order: created_at desc
 }
+
+view MyTickets {
+  source: Ticket
+  filter: author == user or assignee == user
+  fields: id, subject, status, priority, created_at
+  order: priority desc, created_at desc
+}
+
+view OpenTickets {
+  source: Ticket
+  filter: status == open or status == pending
+  fields: id, subject, priority, author.name, created_at
+  order: priority desc
+}`,
+      },
+      {
+        name: "messages.forge",
+        content: `# User-Facing Messages
 
 message TICKET_CLOSED {
   level: error
   default: "This ticket is already closed."
+}
+
+message NOT_AUTHORIZED {
+  level: error
+  default: "You are not authorized to perform this action."
+}
+
+message TICKET_CREATED {
+  level: success
+  default: "Your ticket has been created. An agent will respond shortly."
+}
+
+message TICKET_ASSIGNED {
+  level: info
+  default: "Ticket has been assigned."
 }`,
+      },
+    ],
   },
   blog: {
     title: "Blog",
-    icon: "📝",
+    icon: FileText,
     description: "Multi-author publishing",
-    code: `# Blog - Publishing Platform
+    files: [
+      {
+        name: "app.forge",
+        content: `# Blog - Publishing Platform
 app Blog {
   auth: oauth
   database: postgres
-}
+}`,
+      },
+      {
+        name: "entities.forge",
+        content: `# Data Models
 
 entity User {
   email: string unique
   name: string
   role: enum(reader, author, editor, admin) = reader
   avatar_url: string nullable
+  bio: string nullable
 }
 
 entity Post {
   title: string length <= 200
   slug: string unique
+  excerpt: string length <= 500
   content: string
-  status: enum(draft, review, published) = draft
+  status: enum(draft, review, published, archived) = draft
   published_at: time nullable
   created_at: time = now()
 }
@@ -167,13 +363,31 @@ entity Comment {
   created_at: time = now()
 }
 
+entity Tag {
+  name: string unique
+  slug: string unique
+}
+
+# Relations
 relation Post.author -> User
+relation Post.tags -> Tag many
 relation Comment.post -> Post
-relation Comment.author -> User
+relation Comment.author -> User`,
+      },
+      {
+        name: "rules.forge",
+        content: `# Publishing Rules
 
 rule Post.publish {
   forbid if status != review
     emit NOT_IN_REVIEW
+  require if user == author or user.role == editor
+    emit NOT_AUTHORIZED
+}
+
+rule Post.archive {
+  forbid if status != published
+    emit NOT_PUBLISHED
 }
 
 rule Comment.create {
@@ -181,71 +395,200 @@ rule Comment.create {
     emit POST_NOT_PUBLISHED
 }
 
+rule Comment.approve {
+  require if user.role == author or user.role == editor
+    emit NOT_AUTHORIZED
+}`,
+      },
+      {
+        name: "access.forge",
+        content: `# Access Control
+
+access User {
+  read: true
+  write: user == this
+}
+
 access Post {
-  read: status == published or user == author
+  read: status == published or user == author or user.role == editor
   write: user == author or user.role == editor
+}
+
+access Comment {
+  read: post.status == published
+  write: user == author
+}
+
+access Tag {
+  read: true
+  write: user.role == editor or user.role == admin
+}`,
+      },
+      {
+        name: "actions.forge",
+        content: `# Actions
+
+action submit_for_review {
+  input: Post
 }
 
 action publish_post {
   input: Post
 }
 
+action archive_post {
+  input: Post
+}
+
+action approve_comment {
+  input: Comment
+}
+
+action reject_comment {
+  input: Comment
+}`,
+      },
+      {
+        name: "views.forge",
+        content: `# Views
+
 view PublishedPosts {
   source: Post
   filter: status == published
-  fields: id, title, slug, author.name, published_at
+  fields: id, title, slug, excerpt, author.name, published_at, tags.name
   order: published_at desc
 }
 
+view DraftPosts {
+  source: Post
+  filter: status == draft and author == user
+  fields: id, title, status, created_at
+  order: created_at desc
+}
+
+view PendingReview {
+  source: Post
+  filter: status == review
+  fields: id, title, author.name, created_at
+  order: created_at asc
+}
+
+view PostComments {
+  source: Comment
+  filter: status == approved
+  fields: id, content, author.name, created_at
+  order: created_at asc
+}`,
+      },
+      {
+        name: "messages.forge",
+        content: `# Messages
+
 message NOT_IN_REVIEW {
   level: error
-  default: "Post must be submitted for review."
+  default: "Post must be submitted for review before publishing."
+}
+
+message NOT_PUBLISHED {
+  level: error
+  default: "Only published posts can be archived."
 }
 
 message POST_NOT_PUBLISHED {
   level: error
   default: "Cannot comment on unpublished posts."
+}
+
+message NOT_AUTHORIZED {
+  level: error
+  default: "You are not authorized to perform this action."
 }`,
+      },
+    ],
   },
   chat: {
     title: "Chat",
-    icon: "💬",
+    icon: MessageSquare,
     description: "Real-time messaging",
-    code: `# Chat - Real-time Messaging
+    files: [
+      {
+        name: "app.forge",
+        content: `# Chat - Real-time Messaging
 app Chat {
   auth: oauth
   database: postgres
-}
+}`,
+      },
+      {
+        name: "entities.forge",
+        content: `# Data Models
 
 entity User {
   email: string unique
   name: string
   avatar_url: string nullable
   status: enum(online, away, offline) = offline
+  last_seen: time nullable
 }
 
 entity Channel {
   name: string
+  description: string nullable
   type: enum(public, private, direct) = public
+  created_at: time = now()
 }
 
 entity Message {
   content: string
-  type: enum(text, image, system) = text
+  type: enum(text, image, file, system) = text
+  edited: bool = false
   created_at: time = now()
 }
 
+entity Reaction {
+  emoji: string
+  created_at: time = now()
+}
+
+# Relations
 relation Channel.owner -> User
 relation Channel.members -> User many
 relation Message.channel -> Channel
 relation Message.author -> User
 relation Message.parent -> Message nullable
+relation Reaction.message -> Message
+relation Reaction.user -> User`,
+      },
+      {
+        name: "rules.forge",
+        content: `# Business Rules
 
 rule Message.update {
   forbid if author != user
     emit NOT_YOUR_MESSAGE
   forbid if created_at < now() - 24h
     emit TOO_OLD_TO_EDIT
+}
+
+rule Message.delete {
+  forbid if author != user and user != channel.owner
+    emit NOT_AUTHORIZED
+}
+
+rule Channel.delete {
+  forbid if type == direct
+    emit CANNOT_DELETE_DM
+  require if user == owner
+    emit NOT_CHANNEL_OWNER
+}`,
+      },
+      {
+        name: "access.forge",
+        content: `# Access Control
+
+access User {
+  read: true
+  write: user == this
 }
 
 access Channel {
@@ -258,17 +601,101 @@ access Message {
   write: user in channel.members
 }
 
+access Reaction {
+  read: user in message.channel.members
+  write: user in message.channel.members
+}`,
+      },
+      {
+        name: "actions.forge",
+        content: `# Actions
+
+action create_channel {
+  params: name string, type enum(public, private)
+}
+
+action invite_to_channel {
+  input: Channel
+  params: user_id uuid
+}
+
+action send_message {
+  input: Channel
+  params: content string, parent_id uuid nullable
+}
+
+action edit_message {
+  input: Message
+  params: content string
+}
+
+action add_reaction {
+  input: Message
+  params: emoji string
+}
+
+action set_status {
+  params: status enum(online, away, offline)
+}`,
+      },
+      {
+        name: "hooks.forge",
+        content: `# Realtime Hooks
+
 hook Message.after_create {
   broadcast channel_message
+}
+
+hook Message.after_update {
+  broadcast message_edited
+}
+
+hook Message.after_delete {
+  broadcast message_deleted
+}
+
+hook Reaction.after_create {
+  broadcast reaction_added
+}
+
+hook User.after_update {
+  broadcast user_status_changed
+}`,
+      },
+      {
+        name: "views.forge",
+        content: `# Views
+
+view ChannelList {
+  source: Channel
+  filter: user in members
+  fields: id, name, type, description
+  order: name asc
 }
 
 view ChannelMessages {
   source: Message
   filter: parent == null
-  fields: id, content, author.name, created_at
+  fields: id, content, type, author.name, author.avatar_url, created_at, edited
   order: created_at desc
   limit: 50
 }
+
+view ThreadReplies {
+  source: Message
+  fields: id, content, author.name, created_at
+  order: created_at asc
+}
+
+view OnlineUsers {
+  source: User
+  filter: status == online
+  fields: id, name, avatar_url
+}`,
+      },
+      {
+        name: "messages.forge",
+        content: `# Messages
 
 message NOT_YOUR_MESSAGE {
   level: error
@@ -278,7 +705,24 @@ message NOT_YOUR_MESSAGE {
 message TOO_OLD_TO_EDIT {
   level: error
   default: "Messages older than 24 hours cannot be edited."
+}
+
+message NOT_AUTHORIZED {
+  level: error
+  default: "You are not authorized to perform this action."
+}
+
+message CANNOT_DELETE_DM {
+  level: error
+  default: "Direct message channels cannot be deleted."
+}
+
+message NOT_CHANNEL_OWNER {
+  level: error
+  default: "Only the channel owner can perform this action."
 }`,
+      },
+    ],
   },
 };
 
@@ -298,48 +742,78 @@ interface FileTreeItem {
 }
 
 export default function Playground() {
-  const [code, setCode] = useState(EXAMPLES.minimal.code);
   const [selectedExample, setSelectedExample] = useState<ExampleKey>("minimal");
+  const [sourceFiles, setSourceFiles] = useState<SourceFile[]>(EXAMPLES.minimal.files);
+  const [selectedSourceFile, setSelectedSourceFile] = useState<string>("app.forge");
   const [generatedFiles, setGeneratedFiles] = useState<GeneratedFile[]>([]);
-  const [selectedFile, setSelectedFile] = useState<GeneratedFile | null>(null);
+  const [selectedOutputFile, setSelectedOutputFile] = useState<GeneratedFile | null>(null);
   const [isCompiling, setIsCompiling] = useState(false);
   const [copied, setCopied] = useState(false);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(["sdk"]));
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const lineNumbersRef = useRef<HTMLDivElement>(null);
+  const highlightRef = useRef<HTMLPreElement>(null);
 
-  // Generate output on mount and when code changes
+  // Get current source file content
+  const currentSourceFile = sourceFiles.find((f) => f.name === selectedSourceFile);
+  const code = currentSourceFile?.content || "";
+
+  // Update source file content
+  const updateSourceFile = (content: string) => {
+    setSourceFiles((files) =>
+      files.map((f) => (f.name === selectedSourceFile ? { ...f, content } : f))
+    );
+  };
+
+  // Compile when sourceFiles change
   useEffect(() => {
-    compile();
-  }, []);
-
-  const compile = useCallback(() => {
     setIsCompiling(true);
-    setTimeout(() => {
-      const files = generateOutput(code);
+    const timer = setTimeout(() => {
+      // Combine all source files for compilation
+      const combinedCode = sourceFiles.map((f) => f.content).join("\n\n");
+      const files = generateOutput(combinedCode);
       setGeneratedFiles(files);
-      if (files.length > 0 && !selectedFile) {
-        setSelectedFile(files.find((f) => f.name === "artifact.json") || files[0]);
-      }
+      // Preserve the currently selected file if it exists in the new output
+      setSelectedOutputFile((prev) => {
+        if (prev && files.length > 0) {
+          const sameFile = files.find((f) => f.name === prev.name);
+          if (sameFile) return sameFile;
+        }
+        return files.find((f) => f.name === "artifact.json") || files[0] || null;
+      });
       setIsCompiling(false);
     }, 300);
-  }, [code]);
+    return () => clearTimeout(timer);
+  }, [sourceFiles]);
+
+  const compile = useCallback(() => {
+    // Trigger a recompile by updating sourceFiles with a new array reference
+    setSourceFiles((files) => [...files]);
+  }, []);
 
   const loadExample = (key: ExampleKey) => {
     setSelectedExample(key);
-    setCode(EXAMPLES[key].code);
-    setTimeout(() => compile(), 0);
+    setSourceFiles(EXAMPLES[key].files);
+    setSelectedSourceFile(EXAMPLES[key].files[0].name);
   };
 
   const handleEditorScroll = () => {
-    if (lineNumbersRef.current && editorRef.current) {
-      lineNumbersRef.current.scrollTop = editorRef.current.scrollTop;
+    if (editorRef.current) {
+      const scrollTop = editorRef.current.scrollTop;
+      const scrollLeft = editorRef.current.scrollLeft;
+      if (lineNumbersRef.current) {
+        lineNumbersRef.current.scrollTop = scrollTop;
+      }
+      if (highlightRef.current) {
+        highlightRef.current.scrollTop = scrollTop;
+        highlightRef.current.scrollLeft = scrollLeft;
+      }
     }
   };
 
   const copyToClipboard = async () => {
-    if (selectedFile) {
-      await navigator.clipboard.writeText(selectedFile.content);
+    if (selectedOutputFile) {
+      await navigator.clipboard.writeText(selectedOutputFile.content);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
@@ -362,6 +836,9 @@ export default function Playground() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
+      {/* Prism syntax highlighting styles */}
+      <style dangerouslySetInnerHTML={{ __html: prismStyles }} />
+
       {/* Header */}
       <header className="h-14 border-b border-border bg-card/50 backdrop-blur-sm flex items-center px-4 gap-4 sticky top-0 z-50">
         <Link
@@ -387,20 +864,23 @@ export default function Playground() {
         <div className="flex items-center gap-2">
           <span className="text-sm text-muted-foreground">Examples:</span>
           <div className="flex gap-1">
-            {(Object.keys(EXAMPLES) as ExampleKey[]).map((key) => (
-              <button
-                key={key}
-                onClick={() => loadExample(key)}
-                className={`px-3 py-1.5 text-sm rounded-md transition-all ${
-                  selectedExample === key
-                    ? "bg-forge-500/20 text-forge-400 border border-forge-500/30"
-                    : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
-                }`}
-              >
-                <span className="mr-1.5">{EXAMPLES[key].icon}</span>
-                {EXAMPLES[key].title}
-              </button>
-            ))}
+            {(Object.keys(EXAMPLES) as ExampleKey[]).map((key) => {
+              const Icon = EXAMPLES[key].icon;
+              return (
+                <button
+                  key={key}
+                  onClick={() => loadExample(key)}
+                  className={`w-24 px-2 py-1.5 text-sm rounded-md transition-all flex items-center justify-center gap-1.5 ${
+                    selectedExample === key
+                      ? "bg-forge-500/20 text-forge-400 border border-forge-500/30"
+                      : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {EXAMPLES[key].title}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -429,20 +909,47 @@ export default function Playground() {
       {/* Main content */}
       <main className="flex-1 flex overflow-hidden">
         {/* Editor Panel */}
-        <div className="w-1/2 flex flex-col border-r border-border">
+        <div className="w-1/2 flex flex-col border-r border-border overflow-hidden">
           <div className="h-10 border-b border-border bg-muted/30 flex items-center px-4 gap-2">
             <FileCode className="w-4 h-4 text-forge-400" />
-            <span className="text-sm font-medium">app.forge</span>
+            <span className="text-sm font-medium">Source Files</span>
             <span className="text-xs text-muted-foreground ml-auto">
-              {lineCount} lines
+              {sourceFiles.length} files
             </span>
           </div>
 
-          <div className="flex-1 flex overflow-hidden">
+          <div className="flex-1 flex overflow-hidden min-h-0">
+            {/* Source file tree */}
+            <div className="w-44 shrink-0 border-r border-border bg-muted/10 overflow-y-auto">
+              <div className="p-2">
+                <div className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground">
+                  <Folder className="w-4 h-4 text-forge-500" />
+                  <span className="font-medium">{selectedExample}/</span>
+                </div>
+                <div className="mt-1">
+                  {sourceFiles.map((file) => (
+                    <button
+                      key={file.name}
+                      onClick={() => setSelectedSourceFile(file.name)}
+                      className={`w-full flex items-center gap-1.5 px-2 py-1 text-sm rounded transition-colors ${
+                        selectedSourceFile === file.name
+                          ? "bg-forge-500/20 text-forge-400"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                      }`}
+                      style={{ paddingLeft: "24px" }}
+                    >
+                      <FileCode className="w-4 h-4 text-forge-400" />
+                      <span className="font-mono text-xs truncate">{file.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             {/* Line numbers */}
             <div
               ref={lineNumbersRef}
-              className="w-12 bg-muted/20 border-r border-border overflow-hidden select-none"
+              className="w-10 shrink-0 bg-muted/20 border-r border-border overflow-hidden select-none"
             >
               <div className="py-3 px-2 text-right font-mono text-xs text-muted-foreground leading-6">
                 {Array.from({ length: lineCount }, (_, i) => (
@@ -451,28 +958,47 @@ export default function Playground() {
               </div>
             </div>
 
-            {/* Editor */}
-            <textarea
-              ref={editorRef}
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              onScroll={handleEditorScroll}
-              spellCheck={false}
-              className="flex-1 bg-background p-3 font-mono text-sm leading-6 resize-none outline-none text-foreground"
-              style={{ tabSize: 2 }}
-            />
+            {/* Editor with syntax highlighting overlay */}
+            <div className="flex-1 relative overflow-hidden min-w-0">
+              {/* Highlighted code layer (behind) */}
+              <pre
+                ref={highlightRef}
+                className="absolute inset-0 p-3 font-mono text-sm leading-6 overflow-auto pointer-events-none"
+                aria-hidden="true"
+              >
+                <code
+                  dangerouslySetInnerHTML={{ __html: highlightForge(code) + '\n' }}
+                />
+              </pre>
+
+              {/* Editable textarea (on top, transparent) */}
+              <textarea
+                ref={editorRef}
+                value={code}
+                onChange={(e) => updateSourceFile(e.target.value)}
+                onScroll={handleEditorScroll}
+                spellCheck={false}
+                className="absolute inset-0 w-full h-full bg-transparent p-3 font-mono text-sm leading-6 resize-none outline-none text-transparent"
+                style={{ tabSize: 2, caretColor: '#e4e4e7' }}
+              />
+            </div>
           </div>
 
           <div className="h-8 border-t border-border bg-muted/30 flex items-center px-4 text-xs text-muted-foreground">
-            <span className={isCompiling ? "text-amber-400" : "text-emerald-400"}>
-              {isCompiling ? "Compiling..." : "Ready"}
+            <span className="font-mono">{selectedSourceFile}</span>
+            <span className="mx-2">•</span>
+            <span>{lineCount} lines</span>
+            <span className="ml-auto">
+              <span className={isCompiling ? "text-amber-400" : "text-emerald-400"}>
+                {isCompiling ? "Compiling..." : "Ready"}
+              </span>
             </span>
           </div>
         </div>
 
         {/* Output Panel */}
-        <div className="flex-1 flex flex-col">
-          <div className="h-10 border-b border-border bg-muted/30 flex items-center px-4 gap-2">
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          <div className="h-10 border-b border-border bg-muted/30 flex items-center px-4 gap-2 shrink-0">
             <Database className="w-4 h-4 text-cyan-400" />
             <span className="text-sm font-medium">Generated Output</span>
             <span className="text-xs text-muted-foreground ml-auto">
@@ -480,9 +1006,9 @@ export default function Playground() {
             </span>
           </div>
 
-          <div className="flex-1 flex overflow-hidden">
+          <div className="flex-1 flex overflow-hidden min-h-0">
             {/* File tree */}
-            <div className="w-56 border-r border-border bg-muted/10 overflow-y-auto">
+            <div className="w-56 shrink-0 border-r border-border bg-muted/10 overflow-y-auto">
               <div className="p-2">
                 <div className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground">
                   <Folder className="w-4 h-4 text-amber-500" />
@@ -494,8 +1020,8 @@ export default function Playground() {
                       key={item.name}
                       item={item}
                       depth={1}
-                      selectedFile={selectedFile}
-                      onSelectFile={setSelectedFile}
+                      selectedFile={selectedOutputFile}
+                      onSelectFile={setSelectedOutputFile}
                       expandedFolders={expandedFolders}
                       onToggleFolder={toggleFolder}
                     />
@@ -505,17 +1031,17 @@ export default function Playground() {
             </div>
 
             {/* File preview */}
-            <div className="flex-1 flex flex-col overflow-hidden">
-              {selectedFile ? (
+            <div className="flex-1 flex flex-col overflow-hidden min-w-0">
+              {selectedOutputFile ? (
                 <>
-                  <div className="h-10 border-b border-border bg-muted/30 flex items-center px-4 justify-between">
-                    <div className="flex items-center gap-2">
-                      {getFileIcon(selectedFile.name)}
-                      <span className="text-sm font-mono">{selectedFile.name}</span>
+                  <div className="h-10 border-b border-border bg-muted/30 flex items-center px-4 justify-between shrink-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                      {getFileIcon(selectedOutputFile.name)}
+                      <span className="text-sm font-mono truncate">{selectedOutputFile.name}</span>
                     </div>
                     <button
                       onClick={copyToClipboard}
-                      className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                      className="flex items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"
                     >
                       {copied ? (
                         <>
@@ -530,11 +1056,13 @@ export default function Playground() {
                       )}
                     </button>
                   </div>
-                  <div className="flex-1 overflow-auto bg-background">
-                    <pre className="p-4 text-sm font-mono leading-6">
-                      <code className={`language-${selectedFile.language}`}>
-                        {selectedFile.content}
-                      </code>
+                  <div className="flex-1 overflow-auto bg-background min-h-0">
+                    <pre className="p-4 text-sm font-mono leading-6 overflow-x-auto">
+                      <code
+                        dangerouslySetInnerHTML={{
+                          __html: getHighlightedCode(selectedOutputFile.content, selectedOutputFile.language),
+                        }}
+                      />
                     </pre>
                   </div>
                 </>
@@ -746,13 +1274,27 @@ function generateOutput(source: string): GeneratedFile[] {
   ];
 }
 
-function parseFields(fieldStr: string) {
-  const fields: { name: string; type: string }[] = [];
+interface FieldDef {
+  name: string;
+  type: string;
+  unique?: boolean;
+  nullable?: boolean;
+  hasDefault?: boolean;
+}
+
+function parseFields(fieldStr: string): FieldDef[] {
+  const fields: FieldDef[] = [];
   const lines = fieldStr.split("\n").filter((l) => l.trim() && !l.trim().startsWith("#"));
   for (const line of lines) {
     const match = line.match(/(\w+):\s*(\w+)/);
     if (match) {
-      fields.push({ name: match[1], type: match[2] });
+      fields.push({
+        name: match[1],
+        type: match[2],
+        unique: /\bunique\b/.test(line),
+        nullable: /\bnullable\b/.test(line),
+        hasDefault: /=/.test(line),
+      });
     }
   }
   return fields;
@@ -818,7 +1360,7 @@ function generateArtifact(
 }
 
 function generateSQL(
-  entities: { name: string; fields: { name: string; type: string }[] }[],
+  entities: { name: string; fields: FieldDef[] }[],
   access: { entity: string; read: string; write: string }[]
 ) {
   let sql = `-- Generated by FORGE Compiler
@@ -830,12 +1372,30 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
   for (const entity of entities) {
     const table = entity.name.toLowerCase() + "s";
+    const fieldNames = new Set(entity.fields.map(f => f.name));
+
+    // Generate field definitions with constraints
+    const fieldDefs = entity.fields.map((f) => {
+      let def = `    ${f.name} ${typeToSQL(f.type)}`;
+      if (f.unique) def += " UNIQUE";
+      if (!f.nullable && f.type !== "bool") def += " NOT NULL";
+      if (f.hasDefault && f.type === "time") def += " DEFAULT NOW()";
+      if (f.hasDefault && f.type === "bool") def += " DEFAULT FALSE";
+      return def;
+    });
+
+    // Add created_at/updated_at if not already defined
+    if (!fieldNames.has("created_at")) {
+      fieldDefs.push("    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()");
+    }
+    if (!fieldNames.has("updated_at")) {
+      fieldDefs.push("    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()");
+    }
+
     sql += `-- ${entity.name}
 CREATE TABLE IF NOT EXISTS ${table} (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-${entity.fields.map((f) => `    ${f.name} ${typeToSQL(f.type)}`).join(",\n")},
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+${fieldDefs.join(",\n")}
 );
 
 ALTER TABLE ${table} ENABLE ROW LEVEL SECURITY;

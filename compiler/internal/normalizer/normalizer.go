@@ -356,14 +356,16 @@ func (n *Normalizer) normalizeAccess(out *Output) {
 			Entity: access.Entity.Name,
 		}
 
+		entityName := access.Entity.Name
+
 		if access.Read != nil {
 			na.ReadCEL = n.exprToCEL(access.Read)
-			na.ReadExpr = n.exprToSQL(access.Read)
+			na.ReadExpr = n.exprToSQL(access.Read, entityName)
 		}
 
 		if access.Write != nil {
 			na.WriteCEL = n.exprToCEL(access.Write)
-			na.WriteExpr = n.exprToSQL(access.Write)
+			na.WriteExpr = n.exprToSQL(access.Write, entityName)
 		}
 
 		out.Access = append(out.Access, na)
@@ -524,15 +526,15 @@ func (n *Normalizer) exprToCEL(expr ast.Expr) string {
 }
 
 // exprToSQL converts an AST expression to a SQL predicate string.
-func (n *Normalizer) exprToSQL(expr ast.Expr) string {
+// entityName is the context entity for looking up relations (can be empty if unknown).
+func (n *Normalizer) exprToSQL(expr ast.Expr, entityName string) string {
 	switch e := expr.(type) {
 	case *ast.Ident:
 		if e.Name == "user" {
 			return "current_setting('app.user_id')::uuid"
 		}
-		// Check if this is a relation name that should reference a FK column
-		// Common relation names that point to User entities
-		if isRelationToUser(e.Name) {
+		// Check if this is a relation field for the current entity
+		if entityName != "" && n.isRelation(entityName, e.Name) {
 			return e.Name + "_id"
 		}
 		return e.Name
@@ -561,26 +563,26 @@ func (n *Normalizer) exprToSQL(expr ast.Expr) string {
 		return "FALSE"
 
 	case *ast.BinaryExpr:
-		left := n.exprToSQL(e.Left)
+		left := n.exprToSQL(e.Left, entityName)
 		// For equality comparisons, the right side might be an enum literal
 		// that needs to be quoted (depends on context from left side)
-		right := n.exprToSQLValue(e.Right, e.Op, e.Left)
+		right := n.exprToSQLValue(e.Right, e.Op, e.Left, entityName)
 		op := n.tokenToSQLOp(e.Op)
 		return fmt.Sprintf("(%s %s %s)", left, op, right)
 
 	case *ast.UnaryExpr:
-		operand := n.exprToSQL(e.Operand)
+		operand := n.exprToSQL(e.Operand, entityName)
 		op := n.tokenToSQLOp(e.Op)
 		return fmt.Sprintf("%s %s", op, operand)
 
 	case *ast.InExpr:
-		left := n.exprToSQL(e.Left)
+		left := n.exprToSQL(e.Left, entityName)
 		// Handle "user in org.members" style expressions
 		// This generates a subquery to check membership
 		return n.inExprToSQL(left, e.Right)
 
 	case *ast.ParenExpr:
-		return fmt.Sprintf("(%s)", n.exprToSQL(e.Inner))
+		return fmt.Sprintf("(%s)", n.exprToSQL(e.Inner, entityName))
 
 	default:
 		return ""
@@ -612,7 +614,7 @@ func (n *Normalizer) inExprToSQL(left string, right ast.Expr) string {
 
 	default:
 		// Fallback
-		rightSQL := n.exprToSQL(right)
+		rightSQL := n.exprToSQL(right, "")
 		return fmt.Sprintf("(%s IN (SELECT id FROM %s))", left, rightSQL)
 	}
 }
@@ -678,30 +680,27 @@ func (n *Normalizer) tableName(name string) string {
 	}
 }
 
-// isRelationToUser checks if an identifier is a common relation name that points to a User.
-// These should be converted to FK column references (e.g., "author" -> "author_id").
-func isRelationToUser(name string) bool {
-	switch name {
-	case "author", "owner", "assignee", "reporter", "creator", "updater":
-		return true
-	default:
-		return false
-	}
+// isRelation checks if a field name is a relation for the given entity.
+// It looks up the relation in the analyzer scope.
+func (n *Normalizer) isRelation(entityName, fieldName string) bool {
+	key := entityName + "." + fieldName
+	_, exists := n.scope.Relations[key]
+	return exists
 }
 
 // exprToSQLValue converts an expression to SQL, with context about whether
 // the right side should be treated as an enum literal or column reference.
-func (n *Normalizer) exprToSQLValue(expr ast.Expr, op token.Type, leftExpr ast.Expr) string {
+func (n *Normalizer) exprToSQLValue(expr ast.Expr, op token.Type, leftExpr ast.Expr, entityName string) string {
 	// Only apply special handling for equality comparisons
 	if op != token.EQ && op != token.NEQ {
-		return n.exprToSQL(expr)
+		return n.exprToSQL(expr, entityName)
 	}
 
 	switch e := expr.(type) {
 	case *ast.Ident:
 		// Reserved words that shouldn't be quoted
 		if e.Name == "user" || e.Name == "id" || e.Name == "true" || e.Name == "false" {
-			return n.exprToSQL(expr)
+			return n.exprToSQL(expr, entityName)
 		}
 
 		// If left side is a path expression (like user.role), right is likely an enum
@@ -712,9 +711,9 @@ func (n *Normalizer) exprToSQLValue(expr ast.Expr, op token.Type, leftExpr ast.E
 		}
 
 		// Left side is plain identifier (user) - right side is column reference
-		return n.exprToSQL(expr)
+		return n.exprToSQL(expr, entityName)
 	default:
-		return n.exprToSQL(expr)
+		return n.exprToSQL(expr, entityName)
 	}
 }
 
