@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Home from "./pages/Home";
 import Tutorial from "./pages/Tutorial";
+import Playground from "./pages/Playground";
 import "./index.css";
 
 // Docs pages
@@ -31,6 +32,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/playground" element={<Playground />} />
         <Route path="/tutorial" element={<Tutorial />} />
         <Route path="/docs" element={<DocsIndex />} />
         <Route path="/docs/quickstart" element={<QuickStart />} />

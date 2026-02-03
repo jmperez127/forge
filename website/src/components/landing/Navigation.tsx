@@ -24,6 +24,12 @@ export function Navigation() {
 
           {/* Desktop navigation */}
           <div className="hidden md:flex items-center gap-8">
+            <Link
+              to="/playground"
+              className="text-sm font-medium text-forge-400 hover:text-forge-300 transition-colors"
+            >
+              Playground
+            </Link>
             <a
               href="#features"
               className="text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -91,6 +97,12 @@ export function Navigation() {
             className="md:hidden border-t border-border py-4"
           >
             <div className="flex flex-col gap-4">
+              <Link
+                to="/playground"
+                className="text-sm font-medium text-forge-400 hover:text-forge-300 transition-colors"
+              >
+                Playground
+              </Link>
               <a
                 href="#features"
                 className="text-sm text-muted-foreground hover:text-foreground transition-colors"
