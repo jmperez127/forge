@@ -449,8 +449,7 @@ export class ForgeClient {
   // Views
   views = {
     projectBoard: async (): Promise<ProjectBoardItem[]> => {
-      const projects = await this.request<Project[]>('GET', '/api/views/ProjectBoard');
-      return projects.filter(p => !p.archived);
+      return this.request<ProjectBoardItem[]>('GET', '/api/views/ProjectBoard');
     },
     projectDetail: async (id?: string): Promise<ProjectDetailItem[]> => {
       const projects = await this.request<Project[]>('GET', '/api/views/ProjectDetail');

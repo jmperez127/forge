@@ -97,9 +97,9 @@ export function Project() {
         new_intention: intention,
         reason,
       })
+      setProject(prev => prev ? { ...prev, intention } : prev)
       setReason('')
       setShowIntentionForm(false)
-      await loadData()
     } finally {
       setSaving(false)
     }
@@ -107,62 +107,66 @@ export function Project() {
 
   async function handleArchive() {
     await client.actions.archiveProject({ id: id! })
-    await loadData()
+    setProject(prev => prev ? { ...prev, archived: true } : prev)
   }
 
   async function handleRestore() {
     await client.actions.restoreProject({ id: id! })
-    await loadData()
+    setProject(prev => prev ? { ...prev, archived: false } : prev)
   }
 
-  // Helper to touch the project (update last_touched_at)
-  async function touchProject() {
-    await client.actions.updateProject({
-      id: id!,
-      last_touched_at: new Date().toISOString(),
-    })
+  // Helper to touch the project (update last_touched_at) - fire and forget
+  function touchProject() {
+    const now = new Date().toISOString()
+    setProject(prev => prev ? { ...prev, last_touched_at: now } : prev)
+    client.actions.updateProject({ id: id!, last_touched_at: now })
   }
 
   async function handleCreateEntry(content: string, entryType: ProjectEntryItem['entry_type']) {
-    await client.actions.createEntry({
+    const newEntry = await client.actions.createEntry({
       project_id: id!,
       content,
       entry_type: entryType,
     })
-    await touchProject()
-    await loadData()
+    // Update local state immediately
+    setEntries(prev => [{ ...newEntry, project_id: id!, author_id: '' } as ProjectEntryItem, ...prev])
+    touchProject()
   }
 
   async function handleDeleteEntry(entryId: string) {
     await client.actions.deleteEntry({ id: entryId })
-    await loadData()
+    setEntries(prev => prev.filter(e => e.id !== entryId))
   }
 
   async function handleCreateDeed(description: string, deedType: ProjectDeedItem['deed_type']) {
-    await client.actions.createDeed({
+    const newDeed = await client.actions.createDeed({
       project_id: id!,
       description,
       deed_type: deedType,
     })
-    await touchProject()
-    await loadData()
+    setDeeds(prev => [{ ...newDeed, project_id: id!, owner_id: '' } as ProjectDeedItem, ...prev])
+    touchProject()
   }
 
   async function handleHonorDeed(deedId: string) {
     await client.actions.honorDeed({ id: deedId })
-    await touchProject()
-    await loadData()
+    setDeeds(prev => prev.map(d =>
+      d.id === deedId ? { ...d, status: 'honored' as const, honored_at: new Date().toISOString() } : d
+    ))
+    touchProject()
   }
 
   async function handleReleaseDeed(deedId: string, releasedReason: string) {
     await client.actions.releaseDeed({ id: deedId, released_reason: releasedReason })
-    await touchProject()
-    await loadData()
+    setDeeds(prev => prev.map(d =>
+      d.id === deedId ? { ...d, status: 'released' as const, released_reason: releasedReason } : d
+    ))
+    touchProject()
   }
 
   async function handleSetMomentum(momentum: MomentumLevel) {
     await client.actions.updateProject({ id: id!, momentum })
-    await loadData()
+    setProject(prev => prev ? { ...prev, momentum } : prev)
   }
 
   if (loading) {
