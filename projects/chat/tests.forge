@@ -1,13 +1,108 @@
 # Chat Tests
+# Test coverage for chat application rules and behavior
 
+# ============================================
+# Message Rules
+# ============================================
+
+# Cannot edit deleted messages
 test Message.update {
   given deleted = true
   when update Message
   expect reject MESSAGE_DELETED
 }
 
+# ============================================
+# Channel Rules
+# ============================================
+
+# Cannot archive default channel
 test Channel.update {
   given is_default = true
   when update Channel
   expect reject CANNOT_ARCHIVE_DEFAULT
+}
+
+# ============================================
+# Default Values
+# ============================================
+
+# New user defaults to member role
+test User.create {
+  when create User
+  expect User.role = member
+}
+
+# Creating channel defaults to public visibility
+test Channel.create {
+  when create Channel
+  expect Channel.visibility = public
+}
+
+# Creating channel defaults to not archived
+test Channel.create {
+  when create Channel
+  expect Channel.archived = false
+}
+
+# New message defaults to not edited
+test Message.create {
+  when create Message
+  expect Message.edited = false
+}
+
+# New message defaults to not deleted
+test Message.create {
+  when create Message
+  expect Message.deleted = false
+}
+
+# New thread defaults to not edited
+test Thread.create {
+  when create Thread
+  expect Thread.edited = false
+}
+
+# ============================================
+# UserPreferences Defaults
+# ============================================
+
+# New preferences defaults to dark theme
+test UserPreferences.create {
+  when create UserPreferences
+  expect UserPreferences.theme = dark
+}
+
+# New preferences defaults to notifications enabled
+test UserPreferences.create {
+  when create UserPreferences
+  expect UserPreferences.notifications_enabled = true
+}
+
+# New preferences defaults to sound enabled
+test UserPreferences.create {
+  when create UserPreferences
+  expect UserPreferences.sound_enabled = true
+}
+
+# ============================================
+# WorkspaceSettings Defaults
+# ============================================
+
+# New workspace settings defaults to public channel visibility
+test WorkspaceSettings.create {
+  when create WorkspaceSettings
+  expect WorkspaceSettings.default_channel_visibility = public
+}
+
+# New workspace settings defaults to no guests
+test WorkspaceSettings.create {
+  when create WorkspaceSettings
+  expect WorkspaceSettings.allow_guests = false
+}
+
+# New workspace settings defaults to no retention limit
+test WorkspaceSettings.create {
+  when create WorkspaceSettings
+  expect WorkspaceSettings.message_retention_days = 0
 }

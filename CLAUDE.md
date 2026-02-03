@@ -73,7 +73,11 @@ forge/
 │   ├── cmd/
 │   │   └── forge-runtime/     # Runtime binary
 │   └── internal/
-│       └── server/            # HTTP + WebSocket server
+│       ├── server/            # HTTP + WebSocket server
+│       ├── provider/          # Provider interfaces and registry
+│       │   └── builtin/       # Built-in providers (HTTP, email)
+│       ├── jobs/              # Job executor
+│       └── config/            # Runtime configuration
 │
 ├── sdk/
 │   └── typescript/
@@ -339,7 +343,7 @@ curl http://localhost:8080/_dev/database
 curl http://localhost:8080/_dev/websocket
 ```
 
-Available endpoints: `/_dev`, `/_dev/info`, `/_dev/routes`, `/_dev/schema`, `/_dev/actions`, `/_dev/rules`, `/_dev/access`, `/_dev/views`, `/_dev/jobs`, `/_dev/messages`, `/_dev/database`, `/_dev/websocket`, `/_dev/config`
+Available endpoints: `/_dev`, `/_dev/info`, `/_dev/routes`, `/_dev/schema`, `/_dev/actions`, `/_dev/rules`, `/_dev/access`, `/_dev/views`, `/_dev/jobs`, `/_dev/webhooks`, `/_dev/messages`, `/_dev/database`, `/_dev/websocket`, `/_dev/config`
 
 ### Testing
 ```bash
@@ -407,59 +411,87 @@ FORGE supports extending the runtime through compile-time plugins. Plugins are G
 - **Single binary** — No runtime dependencies, simpler deployment
 - **Security** — No arbitrary code loading at startup
 
-### Plugin Types
+### Provider Types
 
 | Type | Interface | Purpose |
 |------|-----------|---------|
-| Database Provider | `provider.DatabaseProvider` | Alternative storage backends (MongoDB, MySQL) |
-| Capability | `capability.Capability` | New job effects (ML inference, custom APIs) |
-| Integration | `integration.Integration` | External system sync (Salesforce, etc.) |
+| Provider | `provider.Provider` | Base interface (Name, Init) |
+| CapabilityProvider | `provider.CapabilityProvider` | Outbound effects (SMS, payments, HTTP) |
+| WebhookProvider | `provider.WebhookProvider` | Inbound events (signature validation, event parsing) |
 
-### Building with Plugins
+### Built-in Providers
 
-```bash
-# Build with custom plugins
-forge build --plugins ./plugins/mongodb,./plugins/salesforce
-
-# Plugins are compiled into the binary
-.forge/runtime  # Single binary with plugins embedded
-```
+| Provider | Capabilities | Webhooks |
+|----------|--------------|----------|
+| `generic` | http.get, http.post, http.put, http.delete, http.call | HMAC-SHA256 validation |
+| `email` | email.send | - |
 
 ### Configuration
 
 ```toml
-# forge.toml
-[database]
-provider = "mongodb"        # Use plugin instead of built-in
-url = "env:MONGODB_URL"
+# forge.runtime.toml
+[providers.twilio]
+account_sid = "env:TWILIO_SID"
+auth_token = "env:TWILIO_TOKEN"
+from = "+15551234567"
 
-[plugins.salesforce]
-client_id = "env:SF_CLIENT_ID"
+[providers.stripe]
+secret_key = "env:STRIPE_SECRET"
+webhook_secret = "env:STRIPE_WEBHOOK_SECRET"
 ```
 
-### Plugin Interface Example
+### Provider Interface Example
 
 ```go
-// plugins/custom/provider.go
-package custom
+// runtime/internal/provider/provider.go
 
-import "github.com/forge-lang/forge/runtime/provider"
+// Provider is the base interface for all providers
+type Provider interface {
+    Name() string
+    Init(config map[string]string) error
+}
 
-type CustomProvider struct{}
+// CapabilityProvider handles outbound effects (jobs)
+type CapabilityProvider interface {
+    Provider
+    Capabilities() []string
+    Execute(ctx context.Context, capability string, data map[string]any) error
+}
 
-func (p *CustomProvider) Name() string { return "custom" }
-func (p *CustomProvider) Init(config map[string]string) error { ... }
-func (p *CustomProvider) Query(view provider.ViewSpec) ([]map[string]any, error) { ... }
-func (p *CustomProvider) Execute(action provider.ActionSpec) error { ... }
+// WebhookProvider handles inbound events
+type WebhookProvider interface {
+    Provider
+    ValidateSignature(r *http.Request, secret string) error
+    ParseEvent(r *http.Request) (eventType string, data map[string]any, err error)
+}
+```
+
+### Registering Providers
+
+```go
+import "github.com/forge-lang/forge/runtime/internal/provider"
 
 func init() {
-    provider.RegisterDatabase(&CustomProvider{})
+    provider.Register(&MyProvider{})
 }
 ```
 
 ---
 
 ## Changelog
+
+### [0.2.0] - 2025-02-02
+
+#### Added
+- External integrations system
+  - Provider interfaces (`Provider`, `CapabilityProvider`, `WebhookProvider`)
+  - Provider registry with compile-time registration
+  - Built-in providers: generic HTTP, SMTP email
+  - Webhook declaration syntax in .forge files
+  - Webhook handler with signature validation and event filtering
+  - Data mapping from external events to action inputs
+  - Job executor with capability provider lookup
+- Webhooks in dev info pages (`/_dev/webhooks`)
 
 ### [0.1.0] - 2024-01-01
 
@@ -545,6 +577,13 @@ job notify_agent {
 view TicketList {
   source: Ticket
   fields: subject, status, author.name
+}
+
+# Webhook (provider normalizes data - no field mappings needed)
+webhook stripe_payments {
+  provider: stripe
+  events: [payment_intent.succeeded, payment_intent.failed]
+  triggers: handle_payment
 }
 
 # Test

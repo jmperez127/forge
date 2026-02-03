@@ -41,6 +41,7 @@ type File struct {
 	Jobs        []*JobDecl
 	Hooks       []*HookDecl
 	Views       []*ViewDecl
+	Webhooks    []*WebhookDecl
 	Imperatives []*ImperativeDecl
 	Migrations  []*MigrateDecl
 	Tests       []*TestDecl
@@ -283,6 +284,30 @@ func (d *ViewDecl) node()              {}
 func (d *ViewDecl) decl()              {}
 func (d *ViewDecl) Pos() token.Position { return d.StartPos }
 func (d *ViewDecl) End() token.Position { return d.EndPos }
+
+// WebhookDecl represents a webhook declaration for inbound external events.
+// The provider handles data normalization - no field mappings needed.
+//
+// Example:
+//
+//	webhook stripe_payments {
+//	    provider: stripe
+//	    events: [payment_intent.succeeded, payment_intent.failed]
+//	    triggers: handle_payment
+//	}
+type WebhookDecl struct {
+	Name     *Ident   // webhook name (becomes route: /webhooks/{name})
+	Provider *Ident   // provider name (e.g., stripe, twilio, generic)
+	Events   []*Ident // list of event types to accept
+	Triggers *Ident   // target action name (provider normalizes data to action input)
+	StartPos token.Position
+	EndPos   token.Position
+}
+
+func (d *WebhookDecl) node()               {}
+func (d *WebhookDecl) decl()               {}
+func (d *WebhookDecl) Pos() token.Position { return d.StartPos }
+func (d *WebhookDecl) End() token.Position { return d.EndPos }
 
 // ImperativeDecl represents an imperative declaration.
 type ImperativeDecl struct {

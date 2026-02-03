@@ -41,6 +41,7 @@ type Scope struct {
 	Messages  map[string]*ast.MessageDecl
 	Jobs      map[string]*ast.JobDecl
 	Views     map[string]*ast.ViewDecl
+	Webhooks  map[string]*ast.WebhookDecl
 }
 
 // Analyzer performs semantic analysis on a FORGE AST.
@@ -61,6 +62,7 @@ func New(file *ast.File) *Analyzer {
 			Messages:  make(map[string]*ast.MessageDecl),
 			Jobs:      make(map[string]*ast.JobDecl),
 			Views:     make(map[string]*ast.ViewDecl),
+			Webhooks:  make(map[string]*ast.WebhookDecl),
 		},
 		diag: diag.New(),
 	}
@@ -204,6 +206,19 @@ func (a *Analyzer) collectDeclarations() {
 	for _, view := range a.file.Views {
 		a.scope.Views[view.Name.Name] = view
 	}
+
+	// Collect webhooks
+	for _, webhook := range a.file.Webhooks {
+		if _, exists := a.scope.Webhooks[webhook.Name.Name]; exists {
+			a.diag.AddError(
+				diag.Range{Start: webhook.Pos(), End: webhook.End()},
+				diag.ErrDuplicateWebhook,
+				fmt.Sprintf("duplicate webhook: %s", webhook.Name.Name),
+			)
+			continue
+		}
+		a.scope.Webhooks[webhook.Name.Name] = webhook
+	}
 }
 
 func (a *Analyzer) resolveReferences() {
@@ -295,6 +310,45 @@ func (a *Analyzer) resolveReferences() {
 					fmt.Sprintf("undefined source entity %s in view %s", view.Source.Name, view.Name.Name),
 				)
 			}
+		}
+	}
+
+	// Validate webhook references
+	for _, webhook := range a.file.Webhooks {
+		// Provider validation is done at runtime (compile-time doesn't know which providers are available)
+		// But we validate that a provider is specified
+		if webhook.Provider == nil {
+			a.diag.AddError(
+				diag.Range{Start: webhook.Pos(), End: webhook.End()},
+				diag.ErrMissingProvider,
+				fmt.Sprintf("webhook %s is missing required provider", webhook.Name.Name),
+			)
+		}
+
+		// Validate that events list is not empty
+		if len(webhook.Events) == 0 {
+			a.diag.AddError(
+				diag.Range{Start: webhook.Pos(), End: webhook.End()},
+				diag.ErrMissingEvents,
+				fmt.Sprintf("webhook %s has no events defined", webhook.Name.Name),
+			)
+		}
+
+		// Validate triggers action reference
+		if webhook.Triggers != nil {
+			if _, exists := a.scope.Actions[webhook.Triggers.Name]; !exists {
+				a.diag.AddError(
+					diag.Range{Start: webhook.Triggers.Pos(), End: webhook.Triggers.End()},
+					diag.ErrUndefinedAction,
+					fmt.Sprintf("undefined action %s in webhook %s", webhook.Triggers.Name, webhook.Name.Name),
+				)
+			}
+		} else {
+			a.diag.AddError(
+				diag.Range{Start: webhook.Pos(), End: webhook.End()},
+				diag.ErrMissingTriggers,
+				fmt.Sprintf("webhook %s is missing required triggers clause", webhook.Name.Name),
+			)
 		}
 	}
 }

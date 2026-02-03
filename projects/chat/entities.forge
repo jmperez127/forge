@@ -38,3 +38,15 @@ entity Thread {
 entity Reaction {
   emoji: string length <= 50
 }
+
+entity UserPreferences {
+  theme: enum(light, dark, system) = dark
+  notifications_enabled: bool = true
+  sound_enabled: bool = true
+}
+
+entity WorkspaceSettings {
+  default_channel_visibility: enum(public, private) = public
+  allow_guests: bool = false
+  message_retention_days: int = 0
+}

@@ -507,3 +507,80 @@ view TicketList {
 		t.Errorf("expected 1 view, got %d", len(file.Views))
 	}
 }
+
+func TestParser_WebhookDecl(t *testing.T) {
+	// New simplified syntax - provider handles data normalization
+	input := `webhook stripe_payments {
+		provider: stripe
+		events: [payment_intent.succeeded, payment_intent.failed]
+		triggers: handle_payment
+	}`
+
+	file, diags := Parse(input, "test.forge")
+
+	if diags.HasErrors() {
+		for _, d := range diags.Errors() {
+			t.Logf("error: %s", d)
+		}
+		t.Fatal("unexpected errors during parsing")
+	}
+
+	if len(file.Webhooks) != 1 {
+		t.Fatalf("expected 1 webhook, got %d", len(file.Webhooks))
+	}
+
+	wh := file.Webhooks[0]
+	if wh.Name.Name != "stripe_payments" {
+		t.Errorf("expected webhook name 'stripe_payments', got %q", wh.Name.Name)
+	}
+
+	if wh.Provider.Name != "stripe" {
+		t.Errorf("expected provider 'stripe', got %q", wh.Provider.Name)
+	}
+
+	if len(wh.Events) != 2 {
+		t.Errorf("expected 2 events, got %d", len(wh.Events))
+	}
+	if wh.Events[0].Name != "payment_intent.succeeded" {
+		t.Errorf("expected first event 'payment_intent.succeeded', got %q", wh.Events[0].Name)
+	}
+	if wh.Events[1].Name != "payment_intent.failed" {
+		t.Errorf("expected second event 'payment_intent.failed', got %q", wh.Events[1].Name)
+	}
+
+	if wh.Triggers == nil {
+		t.Fatal("expected triggers clause")
+	}
+	if wh.Triggers.Name != "handle_payment" {
+		t.Errorf("expected action 'handle_payment', got %q", wh.Triggers.Name)
+	}
+}
+
+func TestParser_WebhookGeneric(t *testing.T) {
+	input := `webhook github_push {
+		provider: generic
+		events: [push]
+		triggers: handle_push
+	}`
+
+	file, diags := Parse(input, "test.forge")
+
+	if diags.HasErrors() {
+		for _, d := range diags.Errors() {
+			t.Logf("error: %s", d)
+		}
+		t.Fatal("unexpected errors during parsing")
+	}
+
+	if len(file.Webhooks) != 1 {
+		t.Fatalf("expected 1 webhook, got %d", len(file.Webhooks))
+	}
+
+	wh := file.Webhooks[0]
+	if wh.Triggers == nil {
+		t.Fatal("expected triggers clause")
+	}
+	if wh.Triggers.Name != "handle_push" {
+		t.Errorf("expected action 'handle_push', got %q", wh.Triggers.Name)
+	}
+}

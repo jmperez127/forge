@@ -15,31 +15,54 @@ export default function ExtendingDocs() {
       <h2 className="text-2xl font-bold mb-4">Built-in Providers</h2>
 
       <p className="text-muted-foreground mb-4">
-        Common integrations are configured via <code className="text-forge-400">forge.toml</code>—no
-        code required:
+        FORGE includes built-in providers for common integrations:
+      </p>
+
+      <div className="overflow-x-auto mb-8">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border">
+              <th className="text-left py-3 px-4 font-semibold">Provider</th>
+              <th className="text-left py-3 px-4 font-semibold">Capabilities (Outbound)</th>
+              <th className="text-left py-3 px-4 font-semibold">Webhooks (Inbound)</th>
+            </tr>
+          </thead>
+          <tbody className="text-muted-foreground">
+            <tr className="border-b border-border/50">
+              <td className="py-3 px-4 font-mono text-forge-400">generic</td>
+              <td className="py-3 px-4">http.get, http.post, http.put, http.delete, http.call</td>
+              <td className="py-3 px-4">HMAC-SHA256 validation</td>
+            </tr>
+            <tr>
+              <td className="py-3 px-4 font-mono text-forge-400">email</td>
+              <td className="py-3 px-4">email.send (SMTP)</td>
+              <td className="py-3 px-4">—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p className="text-muted-foreground mb-4">
+        Configure providers via <code className="text-forge-400">forge.runtime.toml</code>:
       </p>
 
       <CodeBlock
-        filename="forge.toml"
+        filename="forge.runtime.toml"
         language="bash"
         code={`[database]
-provider = "postgres"       # Default, battle-tested
+adapter = "postgres"
 url = "env:DATABASE_URL"
 
-[email]
-provider = "sendgrid"       # or "smtp", "ses", "postmark"
-api_key = "env:SENDGRID_KEY"
+[providers.generic]
+webhook_secret = "env:GITHUB_WEBHOOK_SECRET"
+signature_header = "X-Hub-Signature-256"
 
-[storage]
-provider = "s3"             # or "gcs", "r2", "local"
-bucket = "my-uploads"
-
-[auth]
-provider = "oauth"          # or "jwt", "magic-link"
-
-[cache]
-provider = "redis"          # or "memory"
-url = "env:REDIS_URL"`}
+[providers.email]
+host = "smtp.sendgrid.net"
+port = "587"
+username = "apikey"
+password = "env:SENDGRID_API_KEY"
+from = "noreply@example.com"`}
       />
 
       <p className="text-muted-foreground mt-4 mb-8">
@@ -276,37 +299,35 @@ client_secret = "env:SF_CLIENT_SECRET"
 model_path = "./models/classifier.onnx"`}
       />
 
-      <h2 className="text-2xl font-bold mt-8 mb-4">Plugin Interfaces</h2>
+      <h2 className="text-2xl font-bold mt-8 mb-4">Provider Interfaces</h2>
 
       <p className="text-muted-foreground mb-4">
-        Plugins implement well-defined Go interfaces:
+        Providers implement well-defined Go interfaces:
       </p>
 
       <CodeBlock
         language="typescript"
-        code={`// Database provider interface
-type DatabaseProvider interface {
+        code={`// Base provider interface
+type Provider interface {
     Name() string
     Init(config map[string]string) error
-    Query(view ViewSpec) ([]map[string]any, error)
-    Execute(action ActionSpec) error
-    Subscribe(view ViewSpec, callback func(Change)) error
-    Close() error
 }
 
-// Capability interface for job effects
-type Capability interface {
-    Name() string
-    Init(config map[string]string) error
-    Execute(input map[string]any) (map[string]any, error)
+// CapabilityProvider handles outbound effects (jobs calling external services)
+type CapabilityProvider interface {
+    Provider
+    Capabilities() []string  // e.g., ["sms.send", "voice.call"]
+    Execute(ctx context.Context, capability string, data map[string]any) error
 }
 
-// Integration interface for external sync
-type Integration interface {
-    Name() string
-    Init(config map[string]string) error
-    Sync(entity string, data map[string]any) error
-}`}
+// WebhookProvider handles inbound events (external services calling FORGE)
+type WebhookProvider interface {
+    Provider
+    ValidateSignature(r *http.Request, secret string) error
+    ParseEvent(r *http.Request) (eventType string, data map[string]any, err error)
+}
+
+// A provider can implement both interfaces (e.g., Twilio sends and receives SMS)`}
       />
 
       <h2 className="text-2xl font-bold mt-8 mb-4">When to Use What</h2>

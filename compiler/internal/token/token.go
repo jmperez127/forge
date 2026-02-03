@@ -28,6 +28,7 @@ const (
 	JOB
 	HOOK
 	VIEW
+	WEBHOOK
 	IMPERATIVE
 	MIGRATE
 	TEST
@@ -62,6 +63,11 @@ const (
 	EFFECT
 	RETURNS
 	WHERE
+
+	// Keywords - webhooks
+	PROVIDER
+	EVENTS
+	TRIGGERS
 
 	// Keywords - views
 	SOURCE
@@ -145,6 +151,7 @@ var tokenNames = map[Type]string{
 	JOB:        "job",
 	HOOK:       "hook",
 	VIEW:       "view",
+	WEBHOOK:    "webhook",
 	IMPERATIVE: "imperative",
 	MIGRATE:    "migrate",
 	TEST:       "test",
@@ -174,6 +181,10 @@ var tokenNames = map[Type]string{
 	EFFECT:  "effect",
 	RETURNS: "returns",
 	WHERE:   "where",
+
+	PROVIDER: "provider",
+	EVENTS:   "events",
+	TRIGGERS: "triggers",
 
 	SOURCE: "source",
 	FIELDS: "fields",
@@ -249,6 +260,7 @@ var keywords = map[string]Type{
 	"job":        JOB,
 	"hook":       HOOK,
 	"view":       VIEW,
+	"webhook":    WEBHOOK,
 	"imperative": IMPERATIVE,
 	"migrate":    MIGRATE,
 	"test":       TEST,
@@ -278,6 +290,10 @@ var keywords = map[string]Type{
 	"effect":  EFFECT,
 	"returns": RETURNS,
 	"where":   WHERE,
+
+	"provider": PROVIDER,
+	"events":   EVENTS,
+	"triggers": TRIGGERS,
 
 	"source": SOURCE,
 	"fields": FIELDS,

@@ -21,6 +21,7 @@ import {
   Users,
   Radio,
   Plug,
+  Webhook,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -53,6 +54,7 @@ const navigation: NavSection[] = [
       { title: "Actions", href: "/docs/actions", icon: Zap },
       { title: "Views", href: "/docs/views", icon: Eye },
       { title: "Hooks & Jobs", href: "/docs/hooks", icon: Bell },
+      { title: "Webhooks", href: "/docs/webhooks", icon: Webhook },
       { title: "Messages", href: "/docs/messages", icon: BookOpen },
       { title: "Presence", href: "/docs/presence", icon: Users },
       { title: "Ephemeral", href: "/docs/ephemeral", icon: Radio },

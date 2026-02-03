@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/forge/react";
 import {
@@ -12,6 +12,8 @@ import {
   Moon,
   Sun,
   Monitor,
+  Building2,
+  ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +23,14 @@ import { UserAvatar } from "@/components/UserAvatar";
 import { cn } from "@/lib/utils";
 
 type Theme = "light" | "dark" | "system";
+
+interface UserPreferences {
+  id: string;
+  user_id: string;
+  theme: Theme;
+  notifications_enabled: boolean;
+  sound_enabled: boolean;
+}
 
 export function Settings() {
   const navigate = useNavigate();
@@ -32,27 +42,13 @@ export function Settings() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  // Theme state
-  const [theme, setTheme] = useState<Theme>(() => {
-    if (typeof window !== "undefined") {
-      return (localStorage.getItem("theme") as Theme) || "dark";
-    }
-    return "dark";
-  });
-
-  // Notification state
-  const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("notifications") !== "false";
-    }
-    return true;
-  });
-  const [soundEnabled, setSoundEnabled] = useState(() => {
-    if (typeof window !== "undefined") {
-      return localStorage.getItem("sound") !== "false";
-    }
-    return true;
-  });
+  // Preferences state (persisted via FORGE)
+  const [preferencesId, setPreferencesId] = useState<string | null>(null);
+  const [theme, setTheme] = useState<Theme>("dark");
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [preferencesLoading, setPreferencesLoading] = useState(true);
+  const [savingPreferences, setSavingPreferences] = useState(false);
 
   // Sync user data
   useEffect(() => {
@@ -62,7 +58,46 @@ export function Settings() {
     }
   }, [user]);
 
-  // Apply theme
+  // Load preferences from FORGE API
+  useEffect(() => {
+    if (!user) return;
+
+    const loadPreferences = async () => {
+      setPreferencesLoading(true);
+      try {
+        const token = localStorage.getItem("forge_token") || "";
+
+        // Fetch all user preferences and find the one for current user
+        const response = await fetch("http://localhost:8080/api/entities/UserPreferences", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          const prefs = (result.data as UserPreferences[])?.find(
+            (p) => p.user_id === user.id
+          );
+
+          if (prefs) {
+            setPreferencesId(prefs.id);
+            setTheme(prefs.theme);
+            setNotificationsEnabled(prefs.notifications_enabled);
+            setSoundEnabled(prefs.sound_enabled);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load preferences:", error);
+      } finally {
+        setPreferencesLoading(false);
+      }
+    };
+
+    loadPreferences();
+  }, [user]);
+
+  // Apply theme to document
   useEffect(() => {
     const root = document.documentElement;
     if (theme === "system") {
@@ -71,7 +106,6 @@ export function Settings() {
     } else {
       root.classList.toggle("dark", theme === "dark");
     }
-    localStorage.setItem("theme", theme);
   }, [theme]);
 
   const handleSaveProfile = async () => {
@@ -100,14 +134,75 @@ export function Settings() {
     }
   };
 
+  // Save preferences to FORGE API
+  const savePreferences = useCallback(
+    async (newTheme: Theme, newNotifications: boolean, newSound: boolean) => {
+      if (!user) return;
+      setSavingPreferences(true);
+
+      const token = localStorage.getItem("forge_token") || "";
+      const prefsData = {
+        user_id: user.id,
+        theme: newTheme,
+        notifications_enabled: newNotifications,
+        sound_enabled: newSound,
+      };
+
+      try {
+        if (preferencesId) {
+          // Update existing preferences
+          await fetch(
+            `http://localhost:8080/api/entities/UserPreferences/${preferencesId}`,
+            {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify(prefsData),
+            }
+          );
+        } else {
+          // Create new preferences
+          const response = await fetch(
+            "http://localhost:8080/api/entities/UserPreferences",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify(prefsData),
+            }
+          );
+
+          if (response.ok) {
+            const result = await response.json();
+            setPreferencesId(result.data.id);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to save preferences:", error);
+      } finally {
+        setSavingPreferences(false);
+      }
+    },
+    [user, preferencesId]
+  );
+
+  const handleThemeChange = (newTheme: Theme) => {
+    setTheme(newTheme);
+    savePreferences(newTheme, notificationsEnabled, soundEnabled);
+  };
+
   const handleNotificationToggle = (enabled: boolean) => {
     setNotificationsEnabled(enabled);
-    localStorage.setItem("notifications", String(enabled));
+    savePreferences(theme, enabled, soundEnabled);
   };
 
   const handleSoundToggle = (enabled: boolean) => {
     setSoundEnabled(enabled);
-    localStorage.setItem("sound", String(enabled));
+    savePreferences(theme, notificationsEnabled, enabled);
   };
 
   const handleLogout = () => {
@@ -212,36 +307,42 @@ export function Settings() {
                   <Label className="mb-3 block">Theme</Label>
                   <div className="flex gap-2">
                     <button
-                      onClick={() => setTheme("light")}
+                      onClick={() => handleThemeChange("light")}
+                      disabled={preferencesLoading || savingPreferences}
                       className={cn(
                         "flex flex-1 flex-col items-center gap-2 rounded-lg border p-4 transition-colors",
                         theme === "light"
                           ? "border-primary bg-primary/5"
-                          : "hover:border-primary/50"
+                          : "hover:border-primary/50",
+                        (preferencesLoading || savingPreferences) && "opacity-50"
                       )}
                     >
                       <Sun className="h-6 w-6" />
                       <span className="text-sm font-medium">Light</span>
                     </button>
                     <button
-                      onClick={() => setTheme("dark")}
+                      onClick={() => handleThemeChange("dark")}
+                      disabled={preferencesLoading || savingPreferences}
                       className={cn(
                         "flex flex-1 flex-col items-center gap-2 rounded-lg border p-4 transition-colors",
                         theme === "dark"
                           ? "border-primary bg-primary/5"
-                          : "hover:border-primary/50"
+                          : "hover:border-primary/50",
+                        (preferencesLoading || savingPreferences) && "opacity-50"
                       )}
                     >
                       <Moon className="h-6 w-6" />
                       <span className="text-sm font-medium">Dark</span>
                     </button>
                     <button
-                      onClick={() => setTheme("system")}
+                      onClick={() => handleThemeChange("system")}
+                      disabled={preferencesLoading || savingPreferences}
                       className={cn(
                         "flex flex-1 flex-col items-center gap-2 rounded-lg border p-4 transition-colors",
                         theme === "system"
                           ? "border-primary bg-primary/5"
-                          : "hover:border-primary/50"
+                          : "hover:border-primary/50",
+                        (preferencesLoading || savingPreferences) && "opacity-50"
                       )}
                     >
                       <Monitor className="h-6 w-6" />
@@ -307,6 +408,28 @@ export function Settings() {
                   />
                 </button>
               </div>
+            </div>
+          </section>
+
+          {/* Workspace Section */}
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <Building2 className="h-5 w-5 text-muted-foreground" />
+              <h2 className="text-lg font-semibold">Workspace</h2>
+            </div>
+            <div className="rounded-lg border bg-card p-6">
+              <button
+                onClick={() => navigate("/workspace-settings")}
+                className="flex w-full items-center justify-between hover:bg-muted/50 -m-2 p-2 rounded-lg transition-colors"
+              >
+                <div className="text-left">
+                  <p className="font-medium">Workspace Settings</p>
+                  <p className="text-sm text-muted-foreground">
+                    Manage channel defaults, access, and retention policies
+                  </p>
+                </div>
+                <ChevronRight className="h-5 w-5 text-muted-foreground" />
+              </button>
             </div>
           </section>
 

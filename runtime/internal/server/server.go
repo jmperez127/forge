@@ -46,19 +46,20 @@ type Server struct {
 
 // Artifact represents the loaded runtime artifact.
 type Artifact struct {
-	Version   string                    `json:"version"`
-	AppName   string                    `json:"app_name"`
-	Auth      string                    `json:"auth"`
-	Database  string                    `json:"database"`
-	Entities  map[string]*EntitySchema  `json:"entities"`
-	Actions   map[string]*ActionSchema  `json:"actions"`
-	Rules     []*RuleSchema             `json:"rules"`
-	Access    map[string]*AccessSchema  `json:"access"`
-	Views     map[string]*ViewSchema    `json:"views"`
-	Jobs      map[string]*JobSchema     `json:"jobs"`
-	Hooks     []*HookSchema             `json:"hooks"`
-	Messages  map[string]*MessageSchema `json:"messages"`
-	Migration *MigrationSchema          `json:"migration"`
+	Version   string                     `json:"version"`
+	AppName   string                     `json:"app_name"`
+	Auth      string                     `json:"auth"`
+	Database  string                     `json:"database"`
+	Entities  map[string]*EntitySchema   `json:"entities"`
+	Actions   map[string]*ActionSchema   `json:"actions"`
+	Rules     []*RuleSchema              `json:"rules"`
+	Access    map[string]*AccessSchema   `json:"access"`
+	Views     map[string]*ViewSchema     `json:"views"`
+	Jobs      map[string]*JobSchema      `json:"jobs"`
+	Hooks     []*HookSchema              `json:"hooks"`
+	Webhooks  map[string]*WebhookSchema  `json:"webhooks"`
+	Messages  map[string]*MessageSchema  `json:"messages"`
+	Migration *MigrationSchema           `json:"migration"`
 }
 
 // MigrationSchema represents the database migration.
@@ -152,6 +153,16 @@ type MessageSchema struct {
 	Code    string `json:"code"`
 	Level   string `json:"level"`
 	Default string `json:"default"`
+}
+
+// WebhookSchema represents a webhook.
+// The provider normalizes data to standard field names - no mappings needed.
+type WebhookSchema struct {
+	Name     string   `json:"name"`
+	Route    string   `json:"route"`
+	Provider string   `json:"provider"`
+	Events   []string `json:"events"`
+	Action   string   `json:"action"`
 }
 
 // New creates a new Server.
@@ -314,6 +325,9 @@ func (s *Server) setupRoutes() {
 
 	// WebSocket
 	r.Get("/ws", s.handleWebSocket)
+
+	// Webhooks - external integrations
+	r.Post("/webhooks/{webhook}", s.handleWebhook)
 
 	// Artifact info (debug)
 	r.Get("/debug/artifact", s.handleArtifact)

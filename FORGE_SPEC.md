@@ -63,6 +63,7 @@ app/
 ├── messages.forge
 ├── jobs.forge
 ├── hooks.forge
+├── webhooks.forge
 ├── views.forge
 └── imperative.forge
 ```
@@ -423,6 +424,114 @@ Jobs and imperative code run with declared capabilities only:
 - file.write
 
 No raw DB access is allowed.
+
+---
+
+## 18.1 External Integrations
+
+FORGE supports external integrations through **providers** - compile-time plugins that handle both outbound effects and inbound webhooks.
+
+### Outbound Effects (FORGE → External Service)
+
+Jobs declare effects that are executed by capability providers.
+
+```text
+job send_verification_sms {
+  input: User
+  needs: User.phone
+  effect: sms.send
+}
+
+job charge_customer {
+  input: Order
+  needs: Order.customer.payment_method
+  effect: stripe.charge
+}
+```
+
+Provider configuration lives in `forge.runtime.toml`:
+
+```toml
+[providers.twilio]
+account_sid = "env:TWILIO_SID"
+auth_token = "env:TWILIO_TOKEN"
+from = "+15551234567"
+
+[providers.stripe]
+secret_key = "env:STRIPE_SECRET"
+```
+
+### Inbound Webhooks (External Service → FORGE)
+
+Webhooks receive events from external services and route them to actions. **Providers handle data normalization** - you don't write field mappings.
+
+```text
+webhook stripe_payments {
+  provider: stripe
+  events: [payment_intent.succeeded, payment_intent.failed]
+  triggers: handle_payment
+}
+```
+
+That's it. No field mappings, no glue code. The provider normalizes Stripe's data format to FORGE-standard field names (snake_case).
+
+Webhooks:
+- Are a **separate construct** from actions (semantics differ)
+- Authenticate via **provider signature validation**, not user tokens
+- **Provider normalizes data** - external formats mapped to FORGE conventions automatically
+- **Filter events** - only specified event types trigger the action
+- Flow through the **normal action pipeline** - rules cannot be bypassed
+
+### Webhook Routes
+
+Webhook routes are auto-generated:
+- Pattern: `/webhooks/{webhook_name}`
+- Example: `/webhooks/stripe_payments`
+
+### Provider Types
+
+| Type | Interface | Purpose |
+|------|-----------|---------|
+| CapabilityProvider | Outbound effects | Send SMS, charge payments, make HTTP calls |
+| WebhookProvider | Inbound events | Validate signatures, parse events, normalize data |
+| FullProvider | Both | Twilio (send + receive SMS) |
+
+### Built-in Providers
+
+| Provider | Capabilities | Webhooks |
+|----------|--------------|----------|
+| generic | http.get, http.post, http.call | HMAC-SHA256 validation, snake_case normalization |
+| email | email.send | - |
+
+### Provider-Owned Normalization
+
+Each provider knows its own data format and normalizes it to FORGE conventions:
+
+| Provider | External Format | Normalized |
+|----------|----------------|------------|
+| Stripe | `data.object.amount` | `amount` |
+| Twilio | `Body`, `From`, `To` | `body`, `from`, `to` |
+| GitHub | `repository.full_name` | `repository_full_name` |
+| Generic | camelCase/PascalCase | snake_case |
+
+The action receives normalized data directly - no mapping code needed.
+
+```text
+webhook twilio_sms {
+  provider: twilio
+  events: [message.received]
+  triggers: receive_sms
+}
+
+action receive_sms {
+  input {
+    body: string    # Provider normalizes Twilio's "Body" → "body"
+    from: string    # Provider normalizes Twilio's "From" → "from"
+    to: string      # Provider normalizes Twilio's "To" → "to"
+  }
+  creates: InboundMessage
+}
+```
 
 ---
 

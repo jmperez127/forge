@@ -18,6 +18,8 @@ import { DirectMessage } from "@/pages/DirectMessage";
 import { CreateWorkspace } from "@/pages/CreateWorkspace";
 import { Settings } from "@/pages/Settings";
 import { Threads } from "@/pages/Threads";
+import { WorkspaceSettings } from "@/pages/WorkspaceSettings";
+import { Members } from "@/pages/Members";
 import { CreateChannelDialog } from "@/components/CreateChannelDialog";
 import { Loader2 } from "lucide-react";
 
@@ -134,6 +136,36 @@ function useWorkspaceSetup() {
   return { workspace, channels, loading, defaultChannelId, refetchChannels, createChannel };
 }
 
+// Wrapper to pass workspace info to WorkspaceSettings page
+function WorkspaceSettingsWrapper() {
+  const { workspace, loading } = useWorkspaceSetup();
+
+  if (loading || !workspace) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return <WorkspaceSettings workspaceId={workspace.id} workspaceName={workspace.name} />;
+}
+
+// Wrapper to pass workspace info to Members page
+function MembersWrapper() {
+  const { workspace, loading } = useWorkspaceSetup();
+
+  if (loading || !workspace) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return <Members workspaceId={workspace.id} />;
+}
+
 function WorkspaceLayout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -235,8 +267,9 @@ function AppRoutes() {
                 <Route path="/channel/:id" element={<Channel />} />
                 <Route path="/dm/:id" element={<DirectMessage />} />
                 <Route path="/threads" element={<Threads />} />
-                <Route path="/members" element={<ComingSoon title="Members" />} />
+                <Route path="/members" element={<MembersWrapper />} />
                 <Route path="/settings" element={<Settings />} />
+                <Route path="/workspace-settings" element={<WorkspaceSettingsWrapper />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </WorkspaceLayout>
@@ -244,17 +277,6 @@ function AppRoutes() {
         />
       </Routes>
     </AuthGuard>
-  );
-}
-
-function ComingSoon({ title }: { title: string }) {
-  return (
-    <div className="flex h-full items-center justify-center">
-      <div className="text-center">
-        <h1 className="text-2xl font-bold">{title}</h1>
-        <p className="mt-2 text-muted-foreground">Coming soon</p>
-      </div>
-    </div>
   );
 }
 

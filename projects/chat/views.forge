@@ -20,3 +20,8 @@ view ThreadList {
   source: Thread
   fields: id, content, edited, author.display_name
 }
+
+view MemberList {
+  source: User
+  fields: id, email, display_name, avatar_url, role
+}

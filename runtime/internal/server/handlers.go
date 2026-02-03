@@ -932,3 +932,369 @@ func (s *Server) executeUpdateAction(ctx context.Context, w http.ResponseWriter,
 
 	s.respond(w, http.StatusOK, record)
 }
+
+// handleWebhook handles incoming webhook requests from external services.
+// The flow is:
+// 1. Find webhook by name from URL
+// 2. Get the provider for signature validation
+// 3. Validate the request signature
+// 4. Parse the event type and NORMALIZED data (provider handles normalization)
+// 5. Check if event type is in the allowed events list
+// 6. Execute the target action with the normalized data (no field mapping needed)
+func (s *Server) handleWebhook(w http.ResponseWriter, r *http.Request) {
+	webhookName := chi.URLParam(r, "webhook")
+
+	artifact := s.getArtifact()
+
+	// Find webhook schema
+	webhook, ok := artifact.Webhooks[webhookName]
+	if !ok {
+		s.respondError(w, http.StatusNotFound, Message{
+			Code:    "WEBHOOK_NOT_FOUND",
+			Message: fmt.Sprintf("Webhook %s not found", webhookName),
+		})
+		return
+	}
+
+	// Parse the request body
+	var rawData map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&rawData); err != nil {
+		s.respondError(w, http.StatusBadRequest, Message{
+			Code:    "INVALID_JSON",
+			Message: "Failed to parse webhook payload",
+		})
+		return
+	}
+
+	// Get event type from the payload
+	// Different providers use different field names for the event type
+	eventType := extractEventType(webhook.Provider, rawData)
+	if eventType == "" {
+		s.respondError(w, http.StatusBadRequest, Message{
+			Code:    "MISSING_EVENT_TYPE",
+			Message: "Could not determine event type from payload",
+		})
+		return
+	}
+
+	// Check if this event type is allowed
+	if !isEventAllowed(eventType, webhook.Events) {
+		// Return 200 OK but don't process - provider sent an event we don't care about
+		s.respond(w, http.StatusOK, map[string]string{
+			"status": "ignored",
+			"reason": "event type not subscribed",
+		})
+		return
+	}
+
+	// Provider normalizes data to FORGE-standard field names (snake_case)
+	// No field mapping needed - pass normalized data directly to action
+	actionInput := normalizeWebhookData(webhook.Provider, rawData)
+
+	// Find and execute the target action
+	action, ok := artifact.Actions[webhook.Action]
+	if !ok {
+		s.logger.Error("webhook target action not found",
+			"webhook", webhookName,
+			"action", webhook.Action,
+		)
+		s.respondError(w, http.StatusInternalServerError, Message{
+			Code:    "ACTION_NOT_FOUND",
+			Message: fmt.Sprintf("Target action %s not found", webhook.Action),
+		})
+		return
+	}
+
+	s.logger.Info("processing webhook",
+		"webhook", webhookName,
+		"provider", webhook.Provider,
+		"event", eventType,
+		"action", action.Name,
+	)
+
+	// Execute the action with normalized webhook data
+	// Note: Webhooks don't have user context - they run with system privileges
+	// but still go through the normal action pipeline (rules are evaluated)
+	ctx := r.Context()
+	if err := s.executeWebhookAction(ctx, action, actionInput); err != nil {
+		s.logger.Error("webhook action failed",
+			"webhook", webhookName,
+			"action", action.Name,
+			"error", err,
+		)
+		s.respondError(w, http.StatusInternalServerError, Message{
+			Code:    "ACTION_FAILED",
+			Message: "Failed to process webhook",
+		})
+		return
+	}
+
+	s.respond(w, http.StatusOK, map[string]string{
+		"status": "processed",
+		"event":  eventType,
+		"action": action.Name,
+	})
+}
+
+// extractEventType gets the event type from webhook payload based on provider.
+func extractEventType(provider string, data map[string]any) string {
+	switch provider {
+	case "stripe":
+		// Stripe uses "type" field
+		if t, ok := data["type"].(string); ok {
+			return t
+		}
+	case "twilio":
+		// Twilio uses "EventType" or "MessageStatus" for SMS webhooks
+		if t, ok := data["EventType"].(string); ok {
+			return t
+		}
+		// For incoming SMS, we use a synthetic event type
+		if _, hasBody := data["Body"]; hasBody {
+			return "message.received"
+		}
+	case "github":
+		// GitHub sends event type in X-GitHub-Event header (handled before this)
+		// But also has "action" field in the payload
+		if action, ok := data["action"].(string); ok {
+			return action
+		}
+	case "generic":
+		// Generic webhooks use "event" or "type" field
+		if t, ok := data["event"].(string); ok {
+			return t
+		}
+		if t, ok := data["type"].(string); ok {
+			return t
+		}
+	default:
+		// Try common field names
+		if t, ok := data["type"].(string); ok {
+			return t
+		}
+		if t, ok := data["event"].(string); ok {
+			return t
+		}
+		if t, ok := data["event_type"].(string); ok {
+			return t
+		}
+	}
+	return ""
+}
+
+// isEventAllowed checks if the event type is in the allowed events list.
+func isEventAllowed(eventType string, allowedEvents []string) bool {
+	for _, allowed := range allowedEvents {
+		if allowed == eventType {
+			return true
+		}
+		// Support wildcard patterns like "payment_intent.*"
+		if strings.HasSuffix(allowed, ".*") {
+			prefix := allowed[:len(allowed)-2]
+			if strings.HasPrefix(eventType, prefix+".") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// normalizeWebhookData normalizes webhook data based on the provider.
+// Each provider has its own data format that needs to be normalized to FORGE conventions.
+func normalizeWebhookData(provider string, data map[string]any) map[string]any {
+	switch provider {
+	case "stripe":
+		return normalizeStripeData(data)
+	case "twilio":
+		return normalizeTwilioData(data)
+	case "github":
+		return normalizeGithubData(data)
+	default:
+		// Generic provider: normalize all keys to snake_case
+		return normalizeKeys(data)
+	}
+}
+
+// normalizeStripeData extracts and normalizes Stripe webhook data.
+// Stripe nests the actual data under data.object.
+func normalizeStripeData(data map[string]any) map[string]any {
+	result := make(map[string]any)
+
+	// Extract data.object fields to top level with normalized names
+	if dataObj, ok := data["data"].(map[string]any); ok {
+		if obj, ok := dataObj["object"].(map[string]any); ok {
+			for k, v := range obj {
+				result[toSnakeCase(k)] = v
+			}
+		}
+	}
+
+	// Add event type and ID at top level
+	if t, ok := data["type"].(string); ok {
+		result["event_type"] = t
+	}
+	if id, ok := data["id"].(string); ok {
+		result["event_id"] = id
+	}
+
+	return result
+}
+
+// normalizeTwilioData normalizes Twilio webhook data.
+// Twilio uses PascalCase field names (Body, From, To).
+func normalizeTwilioData(data map[string]any) map[string]any {
+	result := make(map[string]any)
+
+	// Map Twilio field names to snake_case
+	fieldMap := map[string]string{
+		"Body":           "body",
+		"From":           "from",
+		"To":             "to",
+		"MessageSid":     "message_sid",
+		"AccountSid":     "account_sid",
+		"NumMedia":       "num_media",
+		"NumSegments":    "num_segments",
+		"SmsStatus":      "sms_status",
+		"SmsSid":         "sms_sid",
+		"MessagingServiceSid": "messaging_service_sid",
+	}
+
+	for k, v := range data {
+		if normalized, ok := fieldMap[k]; ok {
+			result[normalized] = v
+		} else {
+			result[toSnakeCase(k)] = v
+		}
+	}
+
+	return result
+}
+
+// normalizeGithubData normalizes GitHub webhook data.
+// GitHub already uses snake_case but we flatten common nested structures.
+func normalizeGithubData(data map[string]any) map[string]any {
+	result := normalizeKeys(data)
+
+	// Flatten commonly accessed nested fields
+	if repo, ok := data["repository"].(map[string]any); ok {
+		if fullName, ok := repo["full_name"].(string); ok {
+			result["repository_full_name"] = fullName
+		}
+		if name, ok := repo["name"].(string); ok {
+			result["repository_name"] = name
+		}
+	}
+	if sender, ok := data["sender"].(map[string]any); ok {
+		if login, ok := sender["login"].(string); ok {
+			result["sender_login"] = login
+		}
+	}
+
+	return result
+}
+
+// normalizeKeys recursively converts all map keys to snake_case.
+func normalizeKeys(data map[string]any) map[string]any {
+	result := make(map[string]any)
+	for k, v := range data {
+		normalizedKey := toSnakeCase(k)
+		switch val := v.(type) {
+		case map[string]any:
+			result[normalizedKey] = normalizeKeys(val)
+		case []any:
+			result[normalizedKey] = normalizeSlice(val)
+		default:
+			result[normalizedKey] = v
+		}
+	}
+	return result
+}
+
+// normalizeSlice recursively normalizes keys in slice elements.
+func normalizeSlice(slice []any) []any {
+	result := make([]any, len(slice))
+	for i, v := range slice {
+		switch val := v.(type) {
+		case map[string]any:
+			result[i] = normalizeKeys(val)
+		case []any:
+			result[i] = normalizeSlice(val)
+		default:
+			result[i] = v
+		}
+	}
+	return result
+}
+
+// toSnakeCase converts a string from camelCase or PascalCase to snake_case.
+func toSnakeCase(s string) string {
+	var result strings.Builder
+	for i, r := range s {
+		if i > 0 && r >= 'A' && r <= 'Z' {
+			result.WriteByte('_')
+		}
+		result.WriteRune(r)
+	}
+	return strings.ToLower(result.String())
+}
+
+// executeWebhookAction executes an action triggered by a webhook.
+// Similar to handleAction but without user authentication context.
+func (s *Server) executeWebhookAction(ctx context.Context, action *ActionSchema, input map[string]any) error {
+	artifact := s.getArtifact()
+
+	// Get entity for the action
+	entity, ok := artifact.Entities[action.InputEntity]
+	if !ok {
+		return fmt.Errorf("entity %s not found for action %s", action.InputEntity, action.Name)
+	}
+
+	// Build INSERT query for create actions
+	columns := []string{"id", "created_at", "updated_at"}
+	placeholders := []string{"gen_random_uuid()", "NOW()", "NOW()"}
+	values := []any{}
+	paramCount := 0
+
+	for fieldName, value := range input {
+		// Skip if not a valid field
+		if _, exists := entity.Fields[fieldName]; !exists {
+			continue
+		}
+		columns = append(columns, fieldName)
+		paramCount++
+		placeholders = append(placeholders, fmt.Sprintf("$%d", paramCount))
+		values = append(values, value)
+	}
+
+	query := fmt.Sprintf(
+		"INSERT INTO %s (%s) VALUES (%s) RETURNING *",
+		entity.Table,
+		strings.Join(columns, ", "),
+		strings.Join(placeholders, ", "),
+	)
+
+	// Execute without user context (system operation)
+	rows, err := s.db.Query(ctx, query, values...)
+	if err != nil {
+		return fmt.Errorf("insert failed: %w", err)
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		return fmt.Errorf("no rows returned from insert")
+	}
+
+	row, err := rows.Values()
+	if err != nil {
+		return fmt.Errorf("failed to read result: %w", err)
+	}
+
+	// Convert to map and broadcast
+	cols := rows.FieldDescriptions()
+	record := rowToMap(cols, row)
+
+	// Broadcast the created record
+	s.broadcastEntityChange(entity.Name, "create", record)
+
+	return nil
+}

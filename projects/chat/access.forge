@@ -30,3 +30,13 @@ access Reaction {
   read: true
   write: true
 }
+
+access UserPreferences {
+  read: user == user
+  write: user == user
+}
+
+access WorkspaceSettings {
+  read: true
+  write: true
+}

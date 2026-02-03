@@ -53,6 +53,7 @@ type StatsInfo struct {
 	Views     int `json:"views"`
 	Jobs      int `json:"jobs"`
 	Hooks     int `json:"hooks"`
+	Webhooks  int `json:"webhooks"`
 	Messages  int `json:"messages"`
 }
 
@@ -113,6 +114,7 @@ func (s *Server) setupDevRoutes() {
 		r.Get("/access", s.handleDevAccess)
 		r.Get("/views", s.handleDevViews)
 		r.Get("/jobs", s.handleDevJobs)
+		r.Get("/webhooks", s.handleDevWebhooks)
 		r.Get("/messages", s.handleDevMessages)
 		r.Get("/database", s.handleDevDatabase)
 		r.Get("/websocket", s.handleDevWebSocket)
@@ -199,6 +201,7 @@ func (s *Server) respondDevHTML(w http.ResponseWriter, title string, data interf
             <a href="/_dev/access">Access</a>
             <a href="/_dev/views">Views</a>
             <a href="/_dev/jobs">Jobs</a>
+            <a href="/_dev/webhooks">Webhooks</a>
             <a href="/_dev/messages">Messages</a>
             <a href="/_dev/database">Database</a>
             <a href="/_dev/websocket">WebSocket</a>
@@ -290,6 +293,10 @@ func (s *Server) respondDevDashboardHTML(w http.ResponseWriter, info *DevInfo) {
             </div>
             <div class="stat">
                 <div class="stat-value">%d</div>
+                <div class="stat-label">Webhooks</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">%d</div>
                 <div class="stat-label">Messages</div>
             </div>
         </div>
@@ -355,6 +362,10 @@ func (s *Server) respondDevDashboardHTML(w http.ResponseWriter, info *DevInfo) {
                     <h3>Jobs & Hooks</h3>
                     <p>Background jobs and lifecycle hooks</p>
                 </a>
+                <a href="/_dev/webhooks" class="card">
+                    <h3>Webhooks</h3>
+                    <p>Inbound webhook endpoints and event mappings</p>
+                </a>
                 <a href="/_dev/messages" class="card">
                     <h3>Messages</h3>
                     <p>Error and info message codes</p>
@@ -378,7 +389,7 @@ func (s *Server) respondDevDashboardHTML(w http.ResponseWriter, info *DevInfo) {
 </html>`,
 		info.App.Name,
 		info.Stats.Entities, info.Stats.Actions, info.Stats.Views,
-		info.Stats.Rules, info.Stats.Jobs, info.Stats.Messages,
+		info.Stats.Rules, info.Stats.Jobs, info.Stats.Webhooks, info.Stats.Messages,
 		info.App.Name, info.App.Version, info.App.Auth, info.App.Database,
 		info.Runtime.Environment, info.Runtime.GoVersion,
 	)
@@ -416,6 +427,7 @@ func (s *Server) getDevInfo() *DevInfo {
 			Views:    len(s.artifact.Views),
 			Jobs:     len(s.artifact.Jobs),
 			Hooks:    len(s.artifact.Hooks),
+			Webhooks: len(s.artifact.Webhooks),
 			Messages: len(s.artifact.Messages),
 		},
 	}
@@ -494,7 +506,23 @@ func (s *Server) getRoutes() []RouteInfo {
 		})
 	}
 
-	// 4. Entities (sorted alphabetically, CRUD grouped per entity)
+	// 4. Webhooks (sorted alphabetically)
+	webhookNames := make([]string, 0, len(s.artifact.Webhooks))
+	for name := range s.artifact.Webhooks {
+		webhookNames = append(webhookNames, name)
+	}
+	sort.Strings(webhookNames)
+
+	for _, name := range webhookNames {
+		webhook := s.artifact.Webhooks[name]
+		access := "provider: " + webhook.Provider
+		routes = append(routes, RouteInfo{
+			Method: "POST", Path: "/webhooks/" + name,
+			Handler: "webhook:" + name, Access: access, Category: "Webhooks",
+		})
+	}
+
+	// 5. Entities (sorted alphabetically, CRUD grouped per entity)
 	entityNames := make([]string, 0, len(s.artifact.Entities))
 	for name := range s.artifact.Entities {
 		entityNames = append(entityNames, name)
@@ -617,6 +645,7 @@ func (s *Server) respondDevRoutesHTML(w http.ResponseWriter, routes []RouteInfo)
             <a href="/_dev/access">Access</a>
             <a href="/_dev/views">Views</a>
             <a href="/_dev/jobs">Jobs</a>
+            <a href="/_dev/webhooks">Webhooks</a>
             <a href="/_dev/messages">Messages</a>
             <a href="/_dev/database">Database</a>
             <a href="/_dev/websocket">WebSocket</a>
@@ -709,6 +738,16 @@ func (s *Server) handleDevJobs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.respondDevJSON(w, data)
+}
+
+// handleDevWebhooks returns webhook definitions
+func (s *Server) handleDevWebhooks(w http.ResponseWriter, r *http.Request) {
+	if wantsHTML(r) {
+		s.respondDevHTML(w, "Webhooks", map[string]interface{}{"webhooks": s.artifact.Webhooks})
+		return
+	}
+
+	s.respondDevJSON(w, map[string]interface{}{"webhooks": s.artifact.Webhooks})
 }
 
 // handleDevMessages returns message codes

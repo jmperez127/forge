@@ -34,9 +34,19 @@ type Config struct {
 	// Auth configuration for identity management
 	Auth AuthConfig `toml:"auth"`
 
+	// Providers holds external integration configurations.
+	// Each key is a provider name (e.g., "twilio", "stripe", "generic").
+	// Values are provider-specific key-value configs.
+	Providers map[string]ProviderConfig `toml:"providers"`
+
 	// Environments holds environment-specific overrides
 	Environments map[string]EnvironmentOverride `toml:"environments"`
 }
+
+// ProviderConfig holds configuration for an external integration provider.
+// Keys and values are provider-specific.
+// All values support "env:" prefix for secret resolution.
+type ProviderConfig map[string]string
 
 // EmailConfig holds email provider configuration.
 type EmailConfig struct {
@@ -104,10 +114,11 @@ type JWTConfig struct {
 
 // EnvironmentOverride holds environment-specific configuration overrides.
 type EnvironmentOverride struct {
-	Database db.Config   `toml:"database"`
-	Email    EmailConfig `toml:"email"`
-	Jobs     JobsConfig  `toml:"jobs"`
-	Auth     AuthConfig  `toml:"auth"`
+	Database  db.Config                  `toml:"database"`
+	Email     EmailConfig                `toml:"email"`
+	Jobs      JobsConfig                 `toml:"jobs"`
+	Auth      AuthConfig                 `toml:"auth"`
+	Providers map[string]ProviderConfig  `toml:"providers"`
 }
 
 // Load loads configuration from forge.runtime.toml in the given directory.
@@ -270,6 +281,23 @@ func (c *Config) applyOverride(override *EnvironmentOverride) {
 	if override.Auth.Provider != "" {
 		c.Auth.Provider = override.Auth.Provider
 	}
+
+	// Provider overrides (merge, don't replace)
+	if override.Providers != nil {
+		if c.Providers == nil {
+			c.Providers = make(map[string]ProviderConfig)
+		}
+		for name, providerConf := range override.Providers {
+			if existing, ok := c.Providers[name]; ok {
+				// Merge provider config
+				for k, v := range providerConf {
+					existing[k] = v
+				}
+			} else {
+				c.Providers[name] = providerConf
+			}
+		}
+	}
 }
 
 // ResolveSecrets resolves all "env:" prefixed values to their actual values.
@@ -288,6 +316,25 @@ func (c *Config) ResolveSecrets() {
 		provider.ClientSecret = resolveEnvValue(provider.ClientSecret)
 		c.Auth.OAuth.Providers[name] = provider
 	}
+
+	// Resolve integration provider secrets
+	for name, providerConf := range c.Providers {
+		resolved := make(ProviderConfig)
+		for k, v := range providerConf {
+			resolved[k] = resolveEnvValue(v)
+		}
+		c.Providers[name] = resolved
+	}
+}
+
+// GetProviderConfigs returns all provider configurations with secrets resolved.
+// Used by the provider registry during initialization.
+func (c *Config) GetProviderConfigs() map[string]map[string]string {
+	result := make(map[string]map[string]string)
+	for name, providerConf := range c.Providers {
+		result[name] = map[string]string(providerConf)
+	}
+	return result
 }
 
 // resolveEnvValue resolves "env:VAR_NAME" to the actual environment variable value.

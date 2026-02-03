@@ -17,6 +17,7 @@ actions.forge    # Named transactions
 messages.forge   # Error/success messages
 hooks.forge      # Action triggers
 jobs.forge       # Background jobs
+webhooks.forge   # Inbound webhooks
 views.forge      # Frontend projections
 tests.forge      # Invariant tests
 ```
@@ -523,6 +524,104 @@ migrate Subscription.v2 {
 
 ---
 
+## Webhooks
+
+Webhooks receive events from external services and route them to actions. Providers handle data normalization automatically - no field mappings needed.
+
+```text
+webhook webhook_name {
+  provider: provider_name
+  events: [event.type1, event.type2]
+  triggers: action_name
+}
+```
+
+### Properties
+
+- `provider` - The provider that handles signature validation and data normalization (required)
+- `events` - List of event types to accept (required)
+- `triggers` - The action to trigger with normalized data (required)
+
+### Providers
+
+| Provider | Description | Data Normalization |
+|----------|-------------|-------------------|
+| `generic` | HMAC-SHA256 signature validation | Converts all keys to snake_case |
+| `stripe` | Stripe webhook signatures | Flattens `data.object.*` to top level |
+| `twilio` | Twilio request validation | Converts `Body`→`body`, `From`→`from`, etc. |
+
+### Provider-Owned Normalization
+
+Each provider normalizes external data formats to FORGE conventions (snake_case). You don't write field mappings - the provider handles this.
+
+| Provider | External Format | Normalized |
+|----------|----------------|------------|
+| Stripe | `data.object.amount` | `amount` |
+| Twilio | `Body`, `From`, `To` | `body`, `from`, `to` |
+| GitHub | `repository.full_name` | `repository_full_name` |
+| Generic | camelCase/PascalCase | snake_case |
+
+### Example
+
+```text
+# Receive Stripe payments - provider normalizes data
+webhook stripe_payments {
+  provider: stripe
+  events: [payment_intent.succeeded, payment_intent.failed]
+  triggers: handle_payment
+}
+
+action handle_payment {
+  input {
+    amount: int           # Provider extracts from data.object.amount
+    currency: string      # Provider extracts from data.object.currency
+    customer_id: string   # Provider extracts from data.object.customer
+  }
+  creates: Payment
+}
+
+# Receive Twilio SMS - provider normalizes field names
+webhook twilio_sms {
+  provider: twilio
+  events: [message.received]
+  triggers: receive_sms
+}
+
+action receive_sms {
+  input {
+    body: string    # Provider normalizes Twilio's "Body" → "body"
+    from: string    # Provider normalizes Twilio's "From" → "from"
+    to: string      # Provider normalizes Twilio's "To" → "to"
+  }
+  creates: InboundMessage
+}
+
+# Generic webhook with HMAC validation
+webhook github_push {
+  provider: generic
+  events: [push]
+  triggers: handle_push
+}
+```
+
+### Generated Endpoints
+
+Webhooks create POST endpoints:
+```
+POST /webhooks/{webhook_name}
+```
+
+### Webhook Flow
+
+1. External service sends POST to `/webhooks/{name}`
+2. Provider validates signature
+3. Event type is checked against `events` list
+4. Provider normalizes data to FORGE conventions (snake_case)
+5. Action executes with normalized data (normal pipeline with rules/access)
+6. 200 OK returned (or error)
+
+---
+
 ## Imperative Code
 
 Escape hatch for custom logic. Use sparingly.
@@ -561,6 +660,7 @@ The following are reserved and cannot be used as identifiers:
 
 ```
 app, entity, relation, rule, access, action, message, job, hook, view,
+webhook, provider, events, triggers,
 imperative, migrate, test, forbid, require, if, emit, read, write,
 before, after, create, update, delete, input, needs, effect, returns,
 where, source, fields, given, when, expect, reject, from, to, map,

@@ -14,19 +14,20 @@ import (
 
 // Artifact is the compiled runtime artifact.
 type Artifact struct {
-	Version     string                     `json:"version"`
-	AppName     string                     `json:"app_name"`
-	Auth        string                     `json:"auth"`
-	Database    string                     `json:"database"`
-	Entities    map[string]*EntitySchema   `json:"entities"`
-	Actions     map[string]*ActionSchema   `json:"actions"`
-	Rules       []*RuleSchema              `json:"rules"`
-	Access      map[string]*AccessSchema   `json:"access"`
-	Views       map[string]*ViewSchema     `json:"views"`
-	Jobs        map[string]*JobSchema      `json:"jobs"`
-	Hooks       []*HookSchema              `json:"hooks"`
-	Messages    map[string]*MessageSchema  `json:"messages"`
-	Migration   *MigrationSchema           `json:"migration"`
+	Version     string                      `json:"version"`
+	AppName     string                      `json:"app_name"`
+	Auth        string                      `json:"auth"`
+	Database    string                      `json:"database"`
+	Entities    map[string]*EntitySchema    `json:"entities"`
+	Actions     map[string]*ActionSchema    `json:"actions"`
+	Rules       []*RuleSchema               `json:"rules"`
+	Access      map[string]*AccessSchema    `json:"access"`
+	Views       map[string]*ViewSchema      `json:"views"`
+	Jobs        map[string]*JobSchema       `json:"jobs"`
+	Hooks       []*HookSchema               `json:"hooks"`
+	Webhooks    map[string]*WebhookSchema   `json:"webhooks"`
+	Messages    map[string]*MessageSchema   `json:"messages"`
+	Migration   *MigrationSchema            `json:"migration"`
 }
 
 // EntitySchema represents an entity in the artifact.
@@ -121,6 +122,16 @@ type MessageSchema struct {
 	Default string `json:"default"`
 }
 
+// WebhookSchema represents a webhook in the artifact.
+// The provider normalizes data to standard field names - no mappings needed.
+type WebhookSchema struct {
+	Name     string   `json:"name"`
+	Route    string   `json:"route"`
+	Provider string   `json:"provider"`
+	Events   []string `json:"events"`
+	Action   string   `json:"action"`
+}
+
 // MigrationSchema represents the migration plan in the artifact.
 type MigrationSchema struct {
 	Version string   `json:"version"`
@@ -193,6 +204,7 @@ func (e *Emitter) generateArtifact() *Artifact {
 		Access:   make(map[string]*AccessSchema),
 		Views:    make(map[string]*ViewSchema),
 		Jobs:     make(map[string]*JobSchema),
+		Webhooks: make(map[string]*WebhookSchema),
 		Messages: make(map[string]*MessageSchema),
 	}
 
@@ -312,6 +324,27 @@ func (e *Emitter) generateArtifact() *Artifact {
 			Level:   msg.Level,
 			Default: msg.Default,
 		}
+	}
+
+	// Generate webhook schemas
+	for name, webhook := range e.scope.Webhooks {
+		ws := &WebhookSchema{
+			Name:     name,
+			Route:    fmt.Sprintf("/webhooks/%s", name),
+			Provider: webhook.Provider.Name,
+		}
+
+		// Add events
+		for _, event := range webhook.Events {
+			ws.Events = append(ws.Events, event.Name)
+		}
+
+		// Add triggered action
+		if webhook.Triggers != nil {
+			ws.Action = webhook.Triggers.Name
+		}
+
+		artifact.Webhooks[name] = ws
 	}
 
 	// Generate migration schema

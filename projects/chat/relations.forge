@@ -16,3 +16,7 @@ relation Thread.author -> User
 
 relation Reaction.message -> Message
 relation Reaction.user -> User
+
+relation UserPreferences.user -> User
+
+relation WorkspaceSettings.workspace -> Workspace

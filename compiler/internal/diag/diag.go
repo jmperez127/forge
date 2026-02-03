@@ -252,6 +252,13 @@ const (
 	ErrMissingInput       = "E0602"
 	ErrMissingEffect      = "E0603"
 
+	// Webhook errors (E07xx)
+	ErrDuplicateWebhook   = "E0701"
+	ErrMissingProvider    = "E0702"
+	ErrMissingEvents      = "E0703"
+	ErrMissingTriggers    = "E0704"
+	ErrInvalidWebhookMap  = "E0705"
+
 	// Warning codes (W01xx)
 	WarnUnusedEntity     = "W0101"
 	WarnUnusedField      = "W0102"

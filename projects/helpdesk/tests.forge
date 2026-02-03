@@ -1,32 +1,102 @@
 # Helpdesk Tests
-# Invariant tests (not behavior tests)
+# Test coverage for helpdesk application rules and behavior
 
+# ============================================
+# Ticket Status Rules
+# ============================================
+
+# Cannot update closed ticket
 test Ticket.update {
   given status = closed
   when update Ticket
   expect reject TICKET_CLOSED
 }
 
-test Ticket.update {
+# ============================================
+# Ticket Delete Rules
+# ============================================
+
+# Cannot delete open ticket
+test Ticket.delete {
   given status = open
-  when update Ticket
-  expect Ticket.status = pending
+  when delete Ticket
+  expect reject TICKET_NOT_CLOSED
 }
 
+# Cannot delete pending ticket
+test Ticket.delete {
+  given status = pending
+  when delete Ticket
+  expect reject TICKET_NOT_CLOSED
+}
+
+# ============================================
+# Ticket Actions
+# ============================================
+
+# Close ticket action changes status to closed
 test close_ticket {
   given Ticket.status = open
   when action close_ticket
   expect Ticket.status = closed
 }
 
+# Reopen ticket changes status to open
 test reopen_ticket {
   given Ticket.status = closed
   when action reopen_ticket
   expect Ticket.status = open
 }
 
+# ============================================
+# Ticket Defaults
+# ============================================
+
+# New ticket defaults to open status
+test Ticket.create {
+  when create Ticket
+  expect Ticket.status = open
+}
+
+# New ticket defaults to medium priority
+test Ticket.create {
+  when create Ticket
+  expect Ticket.priority = medium
+}
+
+# ============================================
+# Comment Rules
+# ============================================
+
+# Cannot create empty comment
 test Comment.create {
   given body = ""
   when create Comment
   expect reject COMMENT_EMPTY
+}
+
+# New comment defaults to non-internal
+test Comment.create {
+  when create Comment
+  expect Comment.internal = false
+}
+
+# ============================================
+# User Defaults
+# ============================================
+
+# New user defaults to customer role
+test User.create {
+  when create User
+  expect User.role = customer
+}
+
+# ============================================
+# Organization Defaults
+# ============================================
+
+# New organization defaults to free plan
+test Organization.create {
+  when create Organization
+  expect Organization.plan = free
 }

@@ -15,6 +15,7 @@ import AccessDocs from "./pages/docs/access";
 import ActionsDocs from "./pages/docs/actions";
 import ViewsDocs from "./pages/docs/views";
 import HooksDocs from "./pages/docs/hooks";
+import WebhooksDocs from "./pages/docs/webhooks";
 import MessagesDocs from "./pages/docs/messages";
 import PresenceDocs from "./pages/docs/presence";
 import EphemeralDocs from "./pages/docs/ephemeral";
@@ -40,6 +41,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
         <Route path="/docs/actions" element={<ActionsDocs />} />
         <Route path="/docs/views" element={<ViewsDocs />} />
         <Route path="/docs/hooks" element={<HooksDocs />} />
+        <Route path="/docs/webhooks" element={<WebhooksDocs />} />
         <Route path="/docs/messages" element={<MessagesDocs />} />
         <Route path="/docs/presence" element={<PresenceDocs />} />
         <Route path="/docs/ephemeral" element={<EphemeralDocs />} />

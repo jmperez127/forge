@@ -191,6 +191,8 @@ func (p *Parser) ParseFile() *ast.File {
 				file.Hooks = append(file.Hooks, d)
 			case *ast.ViewDecl:
 				file.Views = append(file.Views, d)
+			case *ast.WebhookDecl:
+				file.Webhooks = append(file.Webhooks, d)
 			case *ast.ImperativeDecl:
 				file.Imperatives = append(file.Imperatives, d)
 			case *ast.MigrateDecl:
@@ -227,6 +229,8 @@ func (p *Parser) parseDeclaration() ast.Decl {
 		return p.parseHookDecl()
 	case token.VIEW:
 		return p.parseViewDecl()
+	case token.WEBHOOK:
+		return p.parseWebhookDecl()
 	case token.IMPERATIVE:
 		return p.parseImperativeDecl()
 	case token.MIGRATE:
@@ -717,6 +721,108 @@ func (p *Parser) parseViewDecl() *ast.ViewDecl {
 
 	decl.EndPos = p.curToken.End
 	return decl
+}
+
+// parseWebhookDecl parses:
+//
+//	webhook name {
+//	    provider: stripe
+//	    events: [payment_intent.succeeded, payment_intent.failed]
+//	    triggers: action_name
+//	}
+func (p *Parser) parseWebhookDecl() *ast.WebhookDecl {
+	decl := &ast.WebhookDecl{StartPos: p.curToken.Pos}
+
+	if !p.expectPeek(token.IDENT) {
+		return nil
+	}
+	decl.Name = p.parseIdent()
+
+	if !p.expectPeek(token.LBRACE) {
+		return nil
+	}
+
+	p.nextToken()
+
+	for !p.curTokenIs(token.RBRACE) && !p.curTokenIs(token.EOF) {
+		switch p.curToken.Type {
+		case token.PROVIDER:
+			if !p.expectPeek(token.COLON) {
+				p.nextToken()
+				continue
+			}
+			if !p.expectPeek(token.IDENT) {
+				p.nextToken()
+				continue
+			}
+			decl.Provider = p.parseIdent()
+
+		case token.EVENTS:
+			if !p.expectPeek(token.COLON) {
+				p.nextToken()
+				continue
+			}
+			if !p.expectPeek(token.LBRACKET) {
+				p.nextToken()
+				continue
+			}
+			p.nextToken()
+			decl.Events = p.parseEventList()
+
+		case token.TRIGGERS:
+			if !p.expectPeek(token.COLON) {
+				p.nextToken()
+				continue
+			}
+			if !p.expectPeek(token.IDENT) {
+				p.nextToken()
+				continue
+			}
+			decl.Triggers = p.parseIdent()
+		}
+		p.nextToken()
+	}
+
+	decl.EndPos = p.curToken.End
+	return decl
+}
+
+// parseEventList parses a list of event identifiers (possibly with dots).
+// Example: [payment_intent.succeeded, payment_intent.failed]
+func (p *Parser) parseEventList() []*ast.Ident {
+	var events []*ast.Ident
+
+	for !p.curTokenIs(token.RBRACKET) && !p.curTokenIs(token.EOF) {
+		if p.curTokenIs(token.IDENT) {
+			// Build event name, which may contain dots (e.g., payment_intent.succeeded)
+			eventName := p.curToken.Literal
+			startPos := p.curToken.Pos
+			endPos := p.curToken.End
+
+			// Consume any dots in the event name
+			for p.peekTokenIs(token.DOT) {
+				p.nextToken() // consume .
+				if p.peekTokenIs(token.IDENT) {
+					p.nextToken()
+					eventName += "." + p.curToken.Literal
+					endPos = p.curToken.End
+				}
+			}
+
+			events = append(events, &ast.Ident{
+				Name:     eventName,
+				StartPos: startPos,
+				EndPos:   endPos,
+			})
+		}
+
+		if p.peekTokenIs(token.COMMA) {
+			p.nextToken()
+		}
+		p.nextToken()
+	}
+
+	return events
 }
 
 // parseImperativeDecl parses: imperative name { input: x, returns: y }

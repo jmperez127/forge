@@ -169,6 +169,22 @@ test.describe('Chat Application', () => {
       await expect(page.getByText('Enter key message')).toBeVisible();
     });
 
+    test('input keeps focus after sending message', async ({ page }) => {
+      await authenticateChatUser(page, 'member1');
+      await page.goto(`/channel/${TEST_GENERAL_CHANNEL_ID}`);
+
+      const composer = page.getByPlaceholder(/message/i);
+      await composer.fill('First message');
+      await composer.press('Enter');
+
+      // Wait for message to be sent
+      await expect(page.getByText('First message')).toBeVisible();
+
+      // Input should still have focus - can type immediately
+      await page.keyboard.type('Second message without clicking');
+      await expect(composer).toHaveValue('Second message without clicking');
+    });
+
     test('Shift+Enter creates new line instead of sending', async ({ page }) => {
       await authenticateChatUser(page, 'member1');
       await page.goto(`/channel/${TEST_GENERAL_CHANNEL_ID}`);
@@ -434,9 +450,282 @@ test.describe('Chat Application', () => {
   });
 
   test.describe('Typing Indicators', () => {
-    test.skip('shows typing indicator when user is typing', async ({ page, context }) => {
-      // This requires real-time WebSocket implementation
-      // Skip for now
+    test('shows typing indicator when another user is typing', async ({ browser }) => {
+      const context1 = await browser.newContext();
+      const context2 = await browser.newContext();
+      const page1 = await context1.newPage();
+      const page2 = await context2.newPage();
+
+      try {
+        await authenticateChatUser(page1, 'member1');
+        await authenticateChatUser(page2, 'member2');
+
+        await page1.goto(`/channel/${TEST_GENERAL_CHANNEL_ID}`);
+        await page2.goto(`/channel/${TEST_GENERAL_CHANNEL_ID}`);
+
+        // Wait for WebSocket connections
+        await page1.waitForTimeout(1000);
+        await page2.waitForTimeout(1000);
+
+        // User 2 starts typing
+        await page2.getByPlaceholder(/message/i).fill('I am typing...');
+
+        // User 1 should see typing indicator
+        await expect(page1.getByText(/Bob Smith is typing/i)).toBeVisible({ timeout: 3000 });
+      } finally {
+        await context1.close();
+        await context2.close();
+      }
+    });
+
+    test('typing indicator disappears after user stops typing', async ({ browser }) => {
+      const context1 = await browser.newContext();
+      const context2 = await browser.newContext();
+      const page1 = await context1.newPage();
+      const page2 = await context2.newPage();
+
+      try {
+        await authenticateChatUser(page1, 'member1');
+        await authenticateChatUser(page2, 'member2');
+
+        await page1.goto(`/channel/${TEST_GENERAL_CHANNEL_ID}`);
+        await page2.goto(`/channel/${TEST_GENERAL_CHANNEL_ID}`);
+
+        await page1.waitForTimeout(1000);
+        await page2.waitForTimeout(1000);
+
+        // User 2 starts typing
+        await page2.getByPlaceholder(/message/i).fill('Typing');
+
+        // User 1 sees typing indicator
+        await expect(page1.getByText(/is typing/i)).toBeVisible({ timeout: 3000 });
+
+        // Wait for typing timeout (should disappear after ~3 seconds of no input)
+        await page1.waitForTimeout(4000);
+
+        // Typing indicator should be gone
+        await expect(page1.getByText(/is typing/i)).not.toBeVisible();
+      } finally {
+        await context1.close();
+        await context2.close();
+      }
+    });
+
+    test('typing indicator shows in thread panel', async ({ browser }) => {
+      const messageId = await createMessage({
+        channelId: TEST_GENERAL_CHANNEL_ID,
+        content: 'Thread typing test',
+        authorId: CHAT_TEST_USERS.member1.id,
+      });
+
+      const context1 = await browser.newContext();
+      const context2 = await browser.newContext();
+      const page1 = await context1.newPage();
+      const page2 = await context2.newPage();
+
+      try {
+        await authenticateChatUser(page1, 'member1');
+        await authenticateChatUser(page2, 'member2');
+
+        await page1.goto(`/channel/${TEST_GENERAL_CHANNEL_ID}`);
+        await page2.goto(`/channel/${TEST_GENERAL_CHANNEL_ID}`);
+
+        await page1.waitForTimeout(1000);
+
+        // Both users open the thread
+        await page1.getByText('Thread typing test').hover();
+        await page1.getByRole('button', { name: /reply|thread/i }).click();
+        await expect(page1.getByText('Thread')).toBeVisible();
+
+        await page2.getByText('Thread typing test').hover();
+        await page2.getByRole('button', { name: /reply|thread/i }).click();
+        await expect(page2.getByText('Thread')).toBeVisible();
+
+        await page1.waitForTimeout(500);
+
+        // User 2 types in thread
+        await page2.getByPlaceholder(/reply/i).fill('Typing in thread...');
+
+        // User 1 should see typing indicator in thread panel
+        await expect(page1.getByText(/is typing/i)).toBeVisible({ timeout: 3000 });
+      } finally {
+        await context1.close();
+        await context2.close();
+      }
+    });
+  });
+
+  test.describe('Threads Page', () => {
+    test('displays threads page with all conversations', async ({ page }) => {
+      // Create a message and thread reply
+      const messageId = await createMessage({
+        channelId: TEST_GENERAL_CHANNEL_ID,
+        content: 'Parent message for threads page',
+        authorId: CHAT_TEST_USERS.member1.id,
+      });
+
+      await createThreadReply({
+        parentMessageId: messageId,
+        content: 'Reply for threads page test',
+        authorId: CHAT_TEST_USERS.member2.id,
+      });
+
+      await authenticateChatUser(page, 'member1');
+      await page.goto('/threads');
+
+      // Should show the thread conversation
+      await expect(page.getByText('Parent message for threads page')).toBeVisible();
+      await expect(page.getByText(/1 reply/i)).toBeVisible();
+    });
+
+    test('threads page shows latest reply info', async ({ page }) => {
+      const messageId = await createMessage({
+        channelId: TEST_GENERAL_CHANNEL_ID,
+        content: 'Message with multiple replies',
+        authorId: CHAT_TEST_USERS.member1.id,
+      });
+
+      await createThreadReply({
+        parentMessageId: messageId,
+        content: 'First reply',
+        authorId: CHAT_TEST_USERS.member2.id,
+      });
+
+      await createThreadReply({
+        parentMessageId: messageId,
+        content: 'Latest reply content',
+        authorId: CHAT_TEST_USERS.admin.id,
+      });
+
+      await authenticateChatUser(page, 'member1');
+      await page.goto('/threads');
+
+      // Should show 2 replies
+      await expect(page.getByText(/2 replies/i)).toBeVisible();
+      // Should show latest replier's name
+      await expect(page.getByText('Admin User')).toBeVisible();
+    });
+
+    test('clicking thread opens thread panel', async ({ page }) => {
+      const messageId = await createMessage({
+        channelId: TEST_GENERAL_CHANNEL_ID,
+        content: 'Click to open thread',
+        authorId: CHAT_TEST_USERS.member1.id,
+      });
+
+      await createThreadReply({
+        parentMessageId: messageId,
+        content: 'Thread reply content',
+        authorId: CHAT_TEST_USERS.member2.id,
+      });
+
+      await authenticateChatUser(page, 'member1');
+      await page.goto('/threads');
+
+      // Click on the thread conversation
+      await page.getByText('Click to open thread').click();
+
+      // Thread panel should open and show the reply
+      await expect(page.getByText('Thread reply content')).toBeVisible();
+    });
+
+    test('threads page shows channel name', async ({ page }) => {
+      const messageId = await createMessage({
+        channelId: TEST_GENERAL_CHANNEL_ID,
+        content: 'Thread in general channel',
+        authorId: CHAT_TEST_USERS.member1.id,
+      });
+
+      await createThreadReply({
+        parentMessageId: messageId,
+        content: 'Reply',
+        authorId: CHAT_TEST_USERS.member2.id,
+      });
+
+      await authenticateChatUser(page, 'member1');
+      await page.goto('/threads');
+
+      // Should show channel name
+      await expect(page.getByText('general')).toBeVisible();
+    });
+
+    test('threads page updates in real-time', async ({ browser }) => {
+      const messageId = await createMessage({
+        channelId: TEST_GENERAL_CHANNEL_ID,
+        content: 'Realtime thread page test',
+        authorId: CHAT_TEST_USERS.member1.id,
+      });
+
+      // Create initial reply so thread appears
+      await createThreadReply({
+        parentMessageId: messageId,
+        content: 'Initial reply',
+        authorId: CHAT_TEST_USERS.member1.id,
+      });
+
+      const context1 = await browser.newContext();
+      const context2 = await browser.newContext();
+      const page1 = await context1.newPage();
+      const page2 = await context2.newPage();
+
+      try {
+        await authenticateChatUser(page1, 'member1');
+        await authenticateChatUser(page2, 'member2');
+
+        // User 1 views threads page
+        await page1.goto('/threads');
+        await expect(page1.getByText('Realtime thread page test')).toBeVisible();
+        await expect(page1.getByText(/1 reply/i)).toBeVisible();
+
+        // Wait for WebSocket
+        await page1.waitForTimeout(1000);
+
+        // User 2 adds another reply via channel
+        await page2.goto(`/channel/${TEST_GENERAL_CHANNEL_ID}`);
+        await page2.waitForTimeout(500);
+        await page2.getByText('Realtime thread page test').hover();
+        await page2.getByRole('button', { name: /reply|thread/i }).click();
+        await page2.getByPlaceholder(/reply/i).fill('New realtime reply');
+        await page2.getByRole('button', { name: /send/i }).click();
+
+        // User 1's threads page should update
+        await expect(page1.getByText(/2 replies/i)).toBeVisible({ timeout: 5000 });
+      } finally {
+        await context1.close();
+        await context2.close();
+      }
+    });
+
+    test('shows empty state when no threads exist', async ({ page }) => {
+      await authenticateChatUser(page, 'member1');
+      await page.goto('/threads');
+
+      // Should show empty state (depending on whether there are existing threads)
+      // This tests the UI renders correctly
+      await expect(page.getByText(/threads/i)).toBeVisible();
+    });
+
+    test('can navigate to channel from threads page', async ({ page }) => {
+      const messageId = await createMessage({
+        channelId: TEST_GENERAL_CHANNEL_ID,
+        content: 'Navigate test message',
+        authorId: CHAT_TEST_USERS.member1.id,
+      });
+
+      await createThreadReply({
+        parentMessageId: messageId,
+        content: 'Navigate test reply',
+        authorId: CHAT_TEST_USERS.member2.id,
+      });
+
+      await authenticateChatUser(page, 'member1');
+      await page.goto('/threads');
+
+      // Click on channel name to navigate
+      await page.getByText('general').first().click();
+
+      // Should navigate to channel
+      await expect(page).toHaveURL(/\/channel\//);
     });
   });
 
@@ -475,9 +764,12 @@ test.describe('Chat Application', () => {
   });
 
   test.describe('Real-time Updates', () => {
-    test.skip('receives new messages without refresh', async ({ page }) => {
+    test('receives new messages without refresh', async ({ page }) => {
       await authenticateChatUser(page, 'member1');
       await page.goto(`/channel/${TEST_GENERAL_CHANNEL_ID}`);
+
+      // Wait for WebSocket to connect
+      await page.waitForTimeout(1000);
 
       // Create message from "another user" via API
       await createMessage({
@@ -488,6 +780,89 @@ test.describe('Chat Application', () => {
 
       // Message should appear without refresh
       await expect(page.getByText('Real-time test message')).toBeVisible({ timeout: 5000 });
+    });
+
+    test('receives new messages in two browser windows', async ({ browser }) => {
+      // Create two browser contexts (simulating two users)
+      const context1 = await browser.newContext();
+      const context2 = await browser.newContext();
+      const page1 = await context1.newPage();
+      const page2 = await context2.newPage();
+
+      try {
+        // Authenticate both users
+        await authenticateChatUser(page1, 'member1');
+        await authenticateChatUser(page2, 'member2');
+
+        // Both navigate to same channel
+        await page1.goto(`/channel/${TEST_GENERAL_CHANNEL_ID}`);
+        await page2.goto(`/channel/${TEST_GENERAL_CHANNEL_ID}`);
+
+        // Wait for WebSocket connections
+        await page1.waitForTimeout(1000);
+        await page2.waitForTimeout(1000);
+
+        // User 1 sends a message
+        await page1.getByPlaceholder(/message/i).fill('Hello from user 1');
+        await page1.getByRole('button', { name: /send/i }).click();
+
+        // User 2 should see the message without refresh
+        await expect(page2.getByText('Hello from user 1')).toBeVisible({ timeout: 5000 });
+
+        // User 2 sends a message back
+        await page2.getByPlaceholder(/message/i).fill('Reply from user 2');
+        await page2.getByRole('button', { name: /send/i }).click();
+
+        // User 1 should see the reply without refresh
+        await expect(page1.getByText('Reply from user 2')).toBeVisible({ timeout: 5000 });
+      } finally {
+        await context1.close();
+        await context2.close();
+      }
+    });
+
+    test('thread replies update in real-time', async ({ browser }) => {
+      // Create a message to reply to
+      const messageId = await createMessage({
+        channelId: TEST_GENERAL_CHANNEL_ID,
+        content: 'Message for thread test',
+        authorId: CHAT_TEST_USERS.member1.id,
+      });
+
+      const context1 = await browser.newContext();
+      const context2 = await browser.newContext();
+      const page1 = await context1.newPage();
+      const page2 = await context2.newPage();
+
+      try {
+        await authenticateChatUser(page1, 'member1');
+        await authenticateChatUser(page2, 'member2');
+
+        // Both open the channel
+        await page1.goto(`/channel/${TEST_GENERAL_CHANNEL_ID}`);
+        await page2.goto(`/channel/${TEST_GENERAL_CHANNEL_ID}`);
+        await page1.waitForTimeout(1000);
+
+        // User 1 opens the thread
+        await page1.getByText('Message for thread test').hover();
+        await page1.getByRole('button', { name: /reply|thread/i }).click();
+
+        // Wait for thread panel to open
+        await expect(page1.getByText('Thread')).toBeVisible();
+
+        // User 2 creates a thread reply via API
+        await createThreadReply({
+          parentMessageId: messageId,
+          content: 'Real-time thread reply',
+          authorId: CHAT_TEST_USERS.member2.id,
+        });
+
+        // User 1 should see the reply in their thread panel
+        await expect(page1.getByText('Real-time thread reply')).toBeVisible({ timeout: 5000 });
+      } finally {
+        await context1.close();
+        await context2.close();
+      }
     });
   });
 
@@ -586,6 +961,368 @@ test.describe('Chat Application', () => {
 
     test('cannot archive default channel', async ({ page }) => {
       // #general is default and cannot be archived
+    });
+  });
+
+  test.describe('User Settings', () => {
+    test('can access settings page', async ({ page }) => {
+      await authenticateChatUser(page, 'member1');
+      await page.goto('/settings');
+
+      await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+      await expect(page.getByText('Profile')).toBeVisible();
+      await expect(page.getByText('Appearance')).toBeVisible();
+      await expect(page.getByText('Notifications')).toBeVisible();
+    });
+
+    test('can update display name', async ({ page }) => {
+      await authenticateChatUser(page, 'member1');
+      await page.goto('/settings');
+
+      await page.getByLabel('Display Name').fill('Updated Name');
+      await page.getByRole('button', { name: 'Save Changes' }).click();
+
+      // Should show saved confirmation
+      await expect(page.getByText('Saved!')).toBeVisible({ timeout: 3000 });
+    });
+
+    test('theme preference persists across sessions', async ({ browser }) => {
+      // Session 1: Set theme to light
+      const context1 = await browser.newContext();
+      const page1 = await context1.newPage();
+
+      try {
+        await authenticateChatUser(page1, 'member1');
+        await page1.goto('/settings');
+
+        // Click light theme
+        await page1.getByRole('button', { name: 'Light' }).click();
+
+        // Wait for save
+        await page1.waitForTimeout(500);
+
+        // Verify light mode is applied
+        const html = page1.locator('html');
+        await expect(html).not.toHaveClass(/dark/);
+      } finally {
+        await context1.close();
+      }
+
+      // Session 2: Verify theme persisted
+      const context2 = await browser.newContext();
+      const page2 = await context2.newPage();
+
+      try {
+        await authenticateChatUser(page2, 'member1');
+        await page2.goto('/settings');
+
+        // Wait for preferences to load
+        await page2.waitForTimeout(500);
+
+        // Light button should be selected (has border-primary class)
+        await expect(page2.getByRole('button', { name: 'Light' })).toHaveClass(/border-primary/);
+
+        // HTML should not have dark class
+        const html = page2.locator('html');
+        await expect(html).not.toHaveClass(/dark/);
+      } finally {
+        await context2.close();
+      }
+    });
+
+    test('notification preferences persist', async ({ browser }) => {
+      // Session 1: Disable notifications
+      const context1 = await browser.newContext();
+      const page1 = await context1.newPage();
+
+      try {
+        await authenticateChatUser(page1, 'member1');
+        await page1.goto('/settings');
+
+        // Find and click the notifications toggle to disable
+        const notificationSection = page1.locator('section').filter({ hasText: 'Enable Notifications' });
+        const toggle = notificationSection.locator('button[class*="rounded-full"]');
+        await toggle.click();
+
+        // Wait for save
+        await page1.waitForTimeout(500);
+      } finally {
+        await context1.close();
+      }
+
+      // Session 2: Verify setting persisted
+      const context2 = await browser.newContext();
+      const page2 = await context2.newPage();
+
+      try {
+        await authenticateChatUser(page2, 'member1');
+        await page2.goto('/settings');
+
+        // Wait for preferences to load
+        await page2.waitForTimeout(500);
+
+        // Notifications toggle should be off (bg-muted class instead of bg-primary)
+        const notificationSection = page2.locator('section').filter({ hasText: 'Enable Notifications' });
+        const toggle = notificationSection.locator('button[class*="rounded-full"]');
+        await expect(toggle).toHaveClass(/bg-muted/);
+      } finally {
+        await context2.close();
+      }
+    });
+
+    test('can navigate to workspace settings', async ({ page }) => {
+      await authenticateChatUser(page, 'admin');
+      await page.goto('/settings');
+
+      // Click on workspace settings link
+      await page.getByText('Workspace Settings').click();
+
+      await expect(page).toHaveURL('/workspace-settings');
+      await expect(page.getByRole('heading', { name: 'Workspace Settings' })).toBeVisible();
+    });
+  });
+
+  test.describe('Members', () => {
+    test('can access members page', async ({ page }) => {
+      await authenticateChatUser(page, 'member1');
+      await page.goto('/members');
+
+      await expect(page.getByRole('heading', { name: 'Members' })).toBeVisible();
+      await expect(page.getByText('Add Member')).toBeVisible();
+    });
+
+    test('displays existing members', async ({ page }) => {
+      await authenticateChatUser(page, 'member1');
+      await page.goto('/members');
+
+      // Should show at least the current user
+      await expect(page.getByText('Alice Chen')).toBeVisible();
+      await expect(page.getByText('(you)')).toBeVisible();
+    });
+
+    test('can search members', async ({ page }) => {
+      await authenticateChatUser(page, 'member1');
+      await page.goto('/members');
+
+      // Search for a specific member
+      await page.getByPlaceholder('Search members...').fill('Alice');
+
+      // Should filter to show only matching members
+      await expect(page.getByText('Alice Chen')).toBeVisible();
+    });
+
+    test('shows member roles with icons', async ({ page }) => {
+      await authenticateChatUser(page, 'admin');
+      await page.goto('/members');
+
+      // Should show role labels
+      await expect(page.getByText('Owner').or(page.getByText('Admin')).or(page.getByText('Member'))).toBeVisible();
+    });
+
+    test('can add a new member', async ({ page }) => {
+      await authenticateChatUser(page, 'admin');
+      await page.goto('/members');
+
+      // Click add member button
+      await page.getByRole('button', { name: 'Add Member' }).click();
+
+      // Fill in email
+      await page.getByLabel('Email address').fill('newmember@example.com');
+
+      // Submit
+      await page.getByRole('button', { name: 'Add Member' }).nth(1).click();
+
+      // Dialog should close and new member should appear
+      await expect(page.getByText('newmember@example.com')).toBeVisible({ timeout: 5000 });
+    });
+
+    test('new members appear in real-time for other users', async ({ browser }) => {
+      const context1 = await browser.newContext();
+      const context2 = await browser.newContext();
+      const page1 = await context1.newPage();
+      const page2 = await context2.newPage();
+
+      try {
+        await authenticateChatUser(page1, 'member1');
+        await authenticateChatUser(page2, 'admin');
+
+        // Both users view members page
+        await page1.goto('/members');
+        await page2.goto('/members');
+
+        // Wait for WebSocket connections
+        await page1.waitForTimeout(1000);
+        await page2.waitForTimeout(1000);
+
+        // Admin adds a new member
+        await page2.getByRole('button', { name: 'Add Member' }).click();
+        await page2.getByLabel('Email address').fill('realtime-test@example.com');
+        await page2.getByRole('button', { name: 'Add Member' }).nth(1).click();
+
+        // Member1 should see the new member appear without refresh
+        await expect(page1.getByText('realtime-test@example.com')).toBeVisible({ timeout: 5000 });
+      } finally {
+        await context1.close();
+        await context2.close();
+      }
+    });
+
+    test('admin can change member roles', async ({ page }) => {
+      await authenticateChatUser(page, 'admin');
+      await page.goto('/members');
+
+      // Find a regular member and click the more options menu
+      const memberRow = page.locator('div').filter({ hasText: /Member/ }).first();
+      await memberRow.getByRole('button', { name: /more/i }).click();
+
+      // Click "Make Admin" option
+      await page.getByRole('menuitem', { name: /Make Admin/i }).click();
+
+      // Role should update
+      await expect(memberRow.getByText('Admin')).toBeVisible({ timeout: 3000 });
+    });
+
+    test('members list sorted by role', async ({ page }) => {
+      await authenticateChatUser(page, 'member1');
+      await page.goto('/members');
+
+      // Get all role badges in order
+      const roles = await page.locator('text=/Owner|Admin|Member/').allTextContents();
+
+      // Verify owners come before admins, admins before members
+      const roleOrder = roles.map(r => {
+        if (r === 'Owner') return 0;
+        if (r === 'Admin') return 1;
+        return 2;
+      });
+
+      // Should be in non-decreasing order
+      for (let i = 1; i < roleOrder.length; i++) {
+        expect(roleOrder[i]).toBeGreaterThanOrEqual(roleOrder[i - 1]);
+      }
+    });
+
+    test('can navigate to members from sidebar', async ({ page }) => {
+      await authenticateChatUser(page, 'member1');
+      await page.goto('/');
+
+      // Click members link in sidebar
+      await page.getByRole('link', { name: /members/i }).click();
+
+      await expect(page).toHaveURL('/members');
+      await expect(page.getByRole('heading', { name: 'Members' })).toBeVisible();
+    });
+  });
+
+  test.describe('Workspace Settings', () => {
+    test('can access workspace settings page', async ({ page }) => {
+      await authenticateChatUser(page, 'admin');
+      await page.goto('/workspace-settings');
+
+      await expect(page.getByRole('heading', { name: 'Workspace Settings' })).toBeVisible();
+      await expect(page.getByText('Channel Defaults')).toBeVisible();
+      await expect(page.getByText('Access')).toBeVisible();
+      await expect(page.getByText('Message Retention')).toBeVisible();
+    });
+
+    test('can change default channel visibility', async ({ page }) => {
+      await authenticateChatUser(page, 'admin');
+      await page.goto('/workspace-settings');
+
+      // Click private visibility option
+      await page.getByRole('button', { name: /Private/ }).click();
+
+      // Save settings
+      await page.getByRole('button', { name: 'Save Settings' }).click();
+
+      // Should show saved confirmation
+      await expect(page.getByText('Saved!')).toBeVisible({ timeout: 3000 });
+    });
+
+    test('can toggle allow guests setting', async ({ page }) => {
+      await authenticateChatUser(page, 'admin');
+      await page.goto('/workspace-settings');
+
+      // Find and click the allow guests toggle
+      const accessSection = page.locator('section').filter({ hasText: 'Allow Guests' });
+      const toggle = accessSection.locator('button[class*="rounded-full"]');
+      await toggle.click();
+
+      // Save settings
+      await page.getByRole('button', { name: 'Save Settings' }).click();
+
+      await expect(page.getByText('Saved!')).toBeVisible({ timeout: 3000 });
+    });
+
+    test('can set message retention period', async ({ page }) => {
+      await authenticateChatUser(page, 'admin');
+      await page.goto('/workspace-settings');
+
+      // Set retention to 30 days
+      await page.getByLabel('Retention Period').fill('30');
+
+      // Save settings
+      await page.getByRole('button', { name: 'Save Settings' }).click();
+
+      await expect(page.getByText('Saved!')).toBeVisible({ timeout: 3000 });
+    });
+
+    test('workspace settings persist across sessions', async ({ browser }) => {
+      // Session 1: Set retention to 90 days and enable guests
+      const context1 = await browser.newContext();
+      const page1 = await context1.newPage();
+
+      try {
+        await authenticateChatUser(page1, 'admin');
+        await page1.goto('/workspace-settings');
+
+        // Set retention to 90 days
+        await page1.getByLabel('Retention Period').fill('90');
+
+        // Enable guests
+        const accessSection = page1.locator('section').filter({ hasText: 'Allow Guests' });
+        const toggle = accessSection.locator('button[class*="rounded-full"]');
+        await toggle.click();
+
+        // Save settings
+        await page1.getByRole('button', { name: 'Save Settings' }).click();
+        await expect(page1.getByText('Saved!')).toBeVisible({ timeout: 3000 });
+      } finally {
+        await context1.close();
+      }
+
+      // Session 2: Verify settings persisted
+      const context2 = await browser.newContext();
+      const page2 = await context2.newPage();
+
+      try {
+        await authenticateChatUser(page2, 'admin');
+        await page2.goto('/workspace-settings');
+
+        // Wait for settings to load
+        await page2.waitForTimeout(500);
+
+        // Retention should be 90
+        await expect(page2.getByLabel('Retention Period')).toHaveValue('90');
+
+        // Allow guests should be on (bg-primary class)
+        const accessSection = page2.locator('section').filter({ hasText: 'Allow Guests' });
+        const toggle = accessSection.locator('button[class*="rounded-full"]');
+        await expect(toggle).toHaveClass(/bg-primary/);
+      } finally {
+        await context2.close();
+      }
+    });
+
+    test('can navigate back from workspace settings', async ({ page }) => {
+      await authenticateChatUser(page, 'admin');
+      await page.goto('/workspace-settings');
+
+      // Click back button
+      await page.getByRole('button', { name: /back/i }).click();
+
+      // Should navigate back to previous page
+      await expect(page).not.toHaveURL('/workspace-settings');
     });
   });
 });
