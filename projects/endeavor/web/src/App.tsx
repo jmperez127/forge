@@ -8,6 +8,7 @@ import { Project } from '@/pages/Project'
 import { Review } from '@/pages/Review'
 import { NewProject } from '@/pages/NewProject'
 import { Login } from '@/pages/Login'
+import { Onboarding } from '@/components/onboarding/Onboarding'
 
 function Layout({ children, onLogout }: { children: React.ReactNode; onLogout: () => void }) {
   return (
@@ -34,8 +35,22 @@ export default function App() {
     return localStorage.getItem('endeavor_token')
   })
 
-  function handleLogin(newToken: string) {
+  const [showOnboarding, setShowOnboarding] = useState<boolean>(() => {
+    // Show onboarding if user hasn't completed it
+    return !localStorage.getItem('endeavor_onboarding_complete')
+  })
+
+  function handleLogin(newToken: string, isNewUser: boolean) {
     setToken(newToken)
+    // Show onboarding for new users who haven't seen it
+    if (isNewUser && !localStorage.getItem('endeavor_onboarding_complete')) {
+      setShowOnboarding(true)
+    }
+  }
+
+  function handleOnboardingComplete() {
+    localStorage.setItem('endeavor_onboarding_complete', 'true')
+    setShowOnboarding(false)
   }
 
   function handleLogout() {
@@ -47,6 +62,15 @@ export default function App() {
     return (
       <ThemeProvider>
         <Login onLogin={handleLogin} />
+      </ThemeProvider>
+    )
+  }
+
+  // Show onboarding for new users
+  if (showOnboarding) {
+    return (
+      <ThemeProvider>
+        <Onboarding onComplete={handleOnboardingComplete} />
       </ThemeProvider>
     )
   }

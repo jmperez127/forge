@@ -3,6 +3,19 @@ export const NORTH_STAR =
 
 export const NORTH_STAR_VALUES = ["Family", "Freedom", "Values", "Future"]
 
+// The full manifesto principles
+export const MANIFESTO = {
+  commitment: "I choose to live deliberately. I believe a good life is not discovered but built, through repeated choices made with integrity and care.",
+
+  creation: "Creation is central to who I am. I build not only to produce results, but to understand myself. Through making things—games, systems, ideas—I learn my limits, refine my judgment, and shape my character.",
+
+  rhythm: "I accept that life moves in cycles. There are times to explore, times to embody and commit, and times to step back, reflect, and clear space. Progress does not require urgency, and rest is not failure.",
+
+  protection: "I protect what matters most: my family, my freedom, my values, and my future. I see responsibility not as a burden, but as the structure that makes a meaningful life possible.",
+
+  measure: "I measure success not by comparison or visibility, but by alignment. If I am growing, creating with intention, acting with integrity, and moving forward without betraying what I stand for, then I am on the right path.",
+}
+
 export type ProjectState = 'threshold' | 'forge' | 'embodiment' | 'clearing'
 
 export interface StateInfo {

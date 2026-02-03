@@ -5,8 +5,17 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { ArrowLeft, Sparkles } from 'lucide-react'
+import { ArrowLeft, Sparkles, DoorOpen, Flame, Mountain, TreePine } from 'lucide-react'
 import { NorthStarCompact } from '@/components/layout/NorthStar'
+import { STATE_INFO, STATE_ORDER, type ProjectState } from '@/lib/philosophy'
+import { cn } from '@/lib/utils'
+
+const STATE_ICONS = {
+  threshold: DoorOpen,
+  forge: Flame,
+  embodiment: Mountain,
+  clearing: TreePine,
+} as const
 
 export function NewProject() {
   const navigate = useNavigate()
@@ -16,6 +25,7 @@ export function NewProject() {
   const [meaning, setMeaning] = useState('')
   const [develops, setDevelops] = useState('')
   const [intention, setIntention] = useState('')
+  const [state, setState] = useState<ProjectState>('threshold')
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -29,7 +39,7 @@ export function NewProject() {
         meaning: meaning.trim() || '',
         develops: develops.trim() || '',
         intention: intention.trim() || '',
-        state: 'threshold',
+        state,
         state_changed_at: now,
         review_at: now,
         archived: false,
@@ -52,7 +62,7 @@ export function NewProject() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">New Project</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            A new possibility crosses The Threshold
+            A new possibility enters your world
           </p>
         </div>
       </div>
@@ -83,6 +93,39 @@ export function NewProject() {
                 disabled={createProject.loading}
                 required
               />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium block mb-2">
+                Starting Stage
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {STATE_ORDER.map((s) => {
+                  const info = STATE_INFO[s]
+                  const Icon = STATE_ICONS[s]
+                  const isSelected = state === s
+                  return (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setState(s)}
+                      disabled={createProject.loading}
+                      className={cn(
+                        'p-3 rounded-lg border text-left transition-all',
+                        isSelected
+                          ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                          : 'border-border hover:border-primary/50'
+                      )}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <Icon className={cn('h-4 w-4', isSelected ? 'text-primary' : 'text-muted-foreground')} />
+                        <span className={cn('text-sm font-medium', isSelected ? 'text-primary' : '')}>{info.title}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{info.description}</p>
+                    </button>
+                  )
+                })}
+              </div>
             </div>
 
             <div>
@@ -145,7 +188,7 @@ export function NewProject() {
                 disabled={!name.trim() || createProject.loading}
                 className="flex-1"
               >
-                {createProject.loading ? 'Creating...' : 'Add to Threshold'}
+                {createProject.loading ? 'Creating...' : `Add to ${STATE_INFO[state].title}`}
               </Button>
             </div>
           </form>
