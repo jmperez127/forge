@@ -123,6 +123,82 @@
   }
 }
 
+/* ==========================================================================
+   Project Pulse System - Visual presence indicators
+   ========================================================================== */
+
+/* Pulse states - based on time since last activity */
+.project-card.pulse-vital {
+  @apply opacity-100;
+}
+
+.project-card.pulse-steady {
+  @apply opacity-[0.95];
+}
+
+.project-card.pulse-distant {
+  @apply opacity-[0.82];
+  filter: saturate(0.92);
+}
+
+.project-card.pulse-dormant {
+  @apply opacity-[0.68];
+  filter: saturate(0.78);
+}
+
+/* Momentum indicators - user-set feeling */
+.project-card.momentum-flowing {
+  @apply border-l-4 border-l-emerald-500 dark:border-l-emerald-400;
+}
+
+.project-card.momentum-stuck {
+  @apply border-l-4 border-l-amber-500 dark:border-l-amber-400;
+}
+
+/* Pulse dot indicator */
+.pulse-dot {
+  @apply w-2 h-2 rounded-full flex-shrink-0 transition-colors;
+}
+
+.pulse-dot.vital {
+  @apply bg-emerald-500 dark:bg-emerald-400;
+}
+
+.pulse-dot.steady {
+  @apply bg-slate-400 dark:bg-slate-500;
+}
+
+.pulse-dot.distant {
+  @apply bg-amber-400 dark:bg-amber-500;
+}
+
+.pulse-dot.dormant {
+  @apply bg-rose-400 dark:bg-rose-500;
+  animation: gentle-pulse 3s ease-in-out infinite;
+}
+
+@keyframes gentle-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Momentum selector buttons */
+.momentum-selector {
+  @apply flex items-center gap-1 bg-muted/50 rounded-lg p-1;
+}
+
+.momentum-selector button {
+  @apply px-2.5 py-1 rounded-md text-xs font-medium transition-all;
+}
+
+.momentum-selector button[data-active="true"] {
+  @apply bg-background shadow-sm;
+}
+
+.momentum-selector button[data-active="false"] {
+  @apply text-muted-foreground hover:text-foreground hover:bg-background/50;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;

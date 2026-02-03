@@ -4,3 +4,15 @@ relation StateTransition.initiated_by -> User
 relation WeeklyReview.owner -> User
 relation IntentionLog.project -> Project
 relation IntentionLog.changed_by -> User
+
+// Entry relations
+relation Entry.project -> Project
+relation Entry.author -> User
+
+// Deed relations
+relation Deed.project -> Project
+relation Deed.owner -> User
+
+// Marker relations
+relation Marker.project -> Project
+relation Marker.created_by -> User

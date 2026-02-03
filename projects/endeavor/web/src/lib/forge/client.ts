@@ -23,6 +23,8 @@ export interface Project {
   state_changed_at: string;
   review_at: string;
   archived: boolean;
+  momentum?: 'flowing' | 'steady' | 'stuck';
+  last_touched_at?: string;
   owner?: User;
   owner_id: string;
 }
@@ -80,6 +82,8 @@ export interface ProjectBoardItem {
   state_changed_at: string;
   review_at: string;
   archived: boolean;
+  momentum?: 'flowing' | 'steady' | 'stuck';
+  last_touched_at?: string;
 }
 
 export interface ProjectDetailItem {
@@ -123,6 +127,81 @@ export interface IntentionHistoryItem {
   reason: string;
   changed_at: string;
   project_id: string;
+}
+
+// Entry - journal entries
+export interface Entry {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  content: string;
+  entry_type: 'reflection' | 'note' | 'insight' | 'question';
+  recorded_at: string;
+  project?: Project;
+  project_id: string;
+  author?: User;
+  author_id: string;
+}
+
+export interface ProjectEntryItem {
+  id: string;
+  content: string;
+  entry_type: 'reflection' | 'note' | 'insight' | 'question';
+  recorded_at: string;
+  project_id: string;
+  author_id: string;
+}
+
+// Deed - commitments/tasks
+export interface Deed {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  description: string;
+  deed_type: 'commitment' | 'exploration' | 'maintenance';
+  status: 'open' | 'honored' | 'released';
+  honored_at: string;
+  released_reason: string;
+  project?: Project;
+  project_id: string;
+  owner?: User;
+  owner_id: string;
+}
+
+export interface ProjectDeedItem {
+  id: string;
+  description: string;
+  deed_type: 'commitment' | 'exploration' | 'maintenance';
+  status: 'open' | 'honored' | 'released';
+  honored_at: string;
+  released_reason: string;
+  project_id: string;
+  owner_id: string;
+}
+
+// Marker - milestones
+export interface Marker {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  title: string;
+  description: string;
+  marker_type: 'milestone' | 'breakthrough' | 'pivot' | 'pause';
+  marked_at: string;
+  project?: Project;
+  project_id: string;
+  created_by?: User;
+  created_by_id: string;
+}
+
+export interface ProjectMarkerItem {
+  id: string;
+  title: string;
+  description: string;
+  marker_type: 'milestone' | 'breakthrough' | 'pivot' | 'pause';
+  marked_at: string;
+  project_id: string;
+  created_by_id: string;
 }
 
 // Message Codes
@@ -284,6 +363,69 @@ export class ForgeClient {
       });
     },
 
+    // Entry actions
+    createEntry: async (input: { project_id: string; content: string; entry_type?: Entry['entry_type'] }): Promise<Entry> => {
+      const userId = this.getUserIdFromToken();
+      return this.request<Entry>('POST', '/api/entities/Entry', {
+        project_id: input.project_id,
+        content: input.content,
+        entry_type: input.entry_type || 'note',
+        recorded_at: new Date().toISOString(),
+        author_id: userId,
+      });
+    },
+    updateEntry: async (input: { id: string } & Partial<Entry>): Promise<Entry> => {
+      return this.request<Entry>('PUT', `/api/entities/Entry/${input.id}`, input);
+    },
+    deleteEntry: async (input: { id: string }): Promise<void> => {
+      return this.request<void>('DELETE', `/api/entities/Entry/${input.id}`);
+    },
+
+    // Deed actions
+    createDeed: async (input: { project_id: string; description: string; deed_type?: Deed['deed_type'] }): Promise<Deed> => {
+      const userId = this.getUserIdFromToken();
+      return this.request<Deed>('POST', '/api/entities/Deed', {
+        project_id: input.project_id,
+        description: input.description,
+        deed_type: input.deed_type || 'commitment',
+        status: 'open',
+        honored_at: '0001-01-01T00:00:00Z', // Placeholder - will be updated when honored
+        released_reason: '',
+        owner_id: userId,
+      });
+    },
+    honorDeed: async (input: { id: string }): Promise<Deed> => {
+      return this.request<Deed>('PUT', `/api/entities/Deed/${input.id}`, {
+        status: 'honored',
+        honored_at: new Date().toISOString(),
+      });
+    },
+    releaseDeed: async (input: { id: string; released_reason: string }): Promise<Deed> => {
+      return this.request<Deed>('PUT', `/api/entities/Deed/${input.id}`, {
+        status: 'released',
+        released_reason: input.released_reason,
+      });
+    },
+    updateDeed: async (input: { id: string } & Partial<Deed>): Promise<Deed> => {
+      return this.request<Deed>('PUT', `/api/entities/Deed/${input.id}`, input);
+    },
+
+    // Marker actions
+    createMarker: async (input: { project_id: string; title: string; description?: string; marker_type?: Marker['marker_type'] }): Promise<Marker> => {
+      const userId = this.getUserIdFromToken();
+      return this.request<Marker>('POST', '/api/entities/Marker', {
+        project_id: input.project_id,
+        title: input.title,
+        description: input.description || '',
+        marker_type: input.marker_type || 'milestone',
+        marked_at: new Date().toISOString(),
+        created_by_id: userId,
+      });
+    },
+    updateMarker: async (input: { id: string } & Partial<Marker>): Promise<Marker> => {
+      return this.request<Marker>('PUT', `/api/entities/Marker/${input.id}`, input);
+    },
+
     // snake_case aliases for compatibility
     get create_project() { return this.createProject; },
     get update_project() { return this.updateProject; },
@@ -293,6 +435,15 @@ export class ForgeClient {
     get update_intention() { return this.updateIntention; },
     get set_review_date() { return this.setReviewDate; },
     get create_weekly_review() { return this.createWeeklyReview; },
+    get create_entry() { return this.createEntry; },
+    get update_entry() { return this.updateEntry; },
+    get delete_entry() { return this.deleteEntry; },
+    get create_deed() { return this.createDeed; },
+    get honor_deed() { return this.honorDeed; },
+    get release_deed() { return this.releaseDeed; },
+    get update_deed() { return this.updateDeed; },
+    get create_marker() { return this.createMarker; },
+    get update_marker() { return this.updateMarker; },
   };
 
   // Views
@@ -326,12 +477,33 @@ export class ForgeClient {
       return logs;
     },
 
+    // Project entries
+    projectEntries: async (projectId: string): Promise<ProjectEntryItem[]> => {
+      const entries = await this.request<Entry[]>('GET', '/api/views/ProjectEntries');
+      return entries.filter(e => e.project_id === projectId);
+    },
+
+    // Project deeds
+    projectDeeds: async (projectId: string): Promise<ProjectDeedItem[]> => {
+      const deeds = await this.request<Deed[]>('GET', '/api/views/ProjectDeeds');
+      return deeds.filter(d => d.project_id === projectId);
+    },
+
+    // Project markers
+    projectMarkers: async (projectId: string): Promise<ProjectMarkerItem[]> => {
+      const markers = await this.request<Marker[]>('GET', '/api/views/ProjectMarkers');
+      return markers.filter(m => m.project_id === projectId);
+    },
+
     // PascalCase aliases for compatibility
     get ProjectBoard() { return this.projectBoard; },
     get ProjectDetail() { return this.projectDetail; },
     get TransitionHistory() { return this.transitionHistory; },
     get WeeklyReviewList() { return this.weeklyReviewList; },
     get IntentionHistory() { return this.intentionHistory; },
+    get ProjectEntries() { return this.projectEntries; },
+    get ProjectDeeds() { return this.projectDeeds; },
+    get ProjectMarkers() { return this.projectMarkers; },
   };
 
   // Get a single project by ID

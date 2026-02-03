@@ -1,6 +1,6 @@
 view ProjectBoard {
   source: Project
-  fields: id, name, state, meaning, intention, state_changed_at, review_at, archived
+  fields: id, name, state, meaning, intention, state_changed_at, review_at, archived, momentum, last_touched_at
 }
 
 view ProjectDetail {
@@ -21,4 +21,19 @@ view WeeklyReviewList {
 view IntentionHistory {
   source: IntentionLog
   fields: id, previous_intention, new_intention, reason, changed_at, project
+}
+
+view ProjectEntries {
+  source: Entry
+  fields: id, content, entry_type, recorded_at, project, author
+}
+
+view ProjectDeeds {
+  source: Deed
+  fields: id, description, deed_type, status, honored_at, released_reason, project, owner
+}
+
+view ProjectMarkers {
+  source: Marker
+  fields: id, title, description, marker_type, marked_at, project, created_by
 }

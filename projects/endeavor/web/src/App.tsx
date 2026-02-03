@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import { ForgeProvider } from '@forge/react'
 import { ThemeProvider } from '@/context/ThemeContext'

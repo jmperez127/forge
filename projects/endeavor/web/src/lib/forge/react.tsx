@@ -444,7 +444,7 @@ export function useEntity<T>(entityName: string, id: string): UseQueryResult<T |
     }
     setLoading(true);
     try {
-      const result = await (client as any).request<T>('GET', `/api/entities/${entityName}/${id}`);
+      const result = await (client as unknown as { request: <U>(method: string, path: string) => Promise<U> }).request<T>('GET', `/api/entities/${entityName}/${id}`);
       setData(result);
       setError(undefined);
     } catch (e) {
@@ -472,7 +472,7 @@ export function useList<T>(viewName: string): UseQueryResult<T[]> {
   const fetch = useCallback(async () => {
     setLoading(true);
     try {
-      const view = (client.views as Record<string, () => Promise<T[]>>)[viewName];
+      const view = (client.views as unknown as Record<string, () => Promise<T[]>>)[viewName];
       if (!view) {
         throw new Error(`View ${viewName} not found`);
       }

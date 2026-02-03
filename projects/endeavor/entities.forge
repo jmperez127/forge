@@ -13,6 +13,8 @@ entity Project {
   state_changed_at: time
   review_at: time
   archived: bool = false
+  momentum: enum(flowing, steady, stuck) = steady
+  last_touched_at: time
 }
 
 entity StateTransition {
@@ -37,4 +39,28 @@ entity IntentionLog {
   new_intention: string
   reason: string
   changed_at: time
+}
+
+// Journal entries - reflections, notes, thoughts on a project
+entity Entry {
+  content: string
+  entry_type: enum(reflection, note, insight, question) = note
+  recorded_at: time
+}
+
+// Deeds - commitments and actions (not "tasks" - these are meaningful work)
+entity Deed {
+  description: string length <= 500
+  deed_type: enum(commitment, exploration, maintenance) = commitment
+  status: enum(open, honored, released) = open
+  honored_at: time
+  released_reason: string
+}
+
+// Markers - significant moments in a project's journey
+entity Marker {
+  title: string length <= 100
+  description: string
+  marker_type: enum(milestone, breakthrough, pivot, pause) = milestone
+  marked_at: time
 }

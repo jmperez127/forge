@@ -37,3 +37,51 @@ action create_weekly_review {
   input: WeeklyReview
   creates: WeeklyReview
 }
+
+// Entry actions
+action create_entry {
+  input: Entry
+  creates: Entry
+}
+
+action update_entry {
+  input: Entry
+  updates: Entry
+}
+
+action delete_entry {
+  input: Entry
+  deletes: Entry
+}
+
+// Deed actions
+action create_deed {
+  input: Deed
+  creates: Deed
+}
+
+action honor_deed {
+  input: Deed
+  updates: Deed
+}
+
+action release_deed {
+  input: Deed
+  updates: Deed
+}
+
+action update_deed {
+  input: Deed
+  updates: Deed
+}
+
+// Marker actions
+action create_marker {
+  input: Marker
+  creates: Marker
+}
+
+action update_marker {
+  input: Marker
+  updates: Marker
+}

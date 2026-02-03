@@ -1,4 +1,5 @@
 import type { ProjectState } from './philosophy'
+import type { MomentumLevel } from './pulse'
 
 export interface Project {
   id: string
@@ -11,6 +12,8 @@ export interface Project {
   review_at: string | null
   archived: boolean
   created_at: string
+  momentum?: MomentumLevel
+  last_touched_at?: string
   [key: string]: unknown
 }
 

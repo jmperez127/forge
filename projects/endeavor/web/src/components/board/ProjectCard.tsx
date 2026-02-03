@@ -3,6 +3,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { Link } from 'react-router-dom'
 import { GripVertical, Clock, ArrowRight } from 'lucide-react'
 import { cn, formatRelativeDate } from '@/lib/utils'
+import { getPulseLevel, getPulseLabel } from '@/lib/pulse'
 import type { Project } from '@/lib/types'
 
 interface ProjectCardProps {
@@ -27,12 +28,20 @@ export function ProjectCard({ project, isDragging }: ProjectCardProps) {
 
   const dragging = isDragging || isSortableDragging
 
+  // Calculate pulse level based on last activity (prefer last_touched_at, fall back to state_changed_at)
+  const lastActivity = project.last_touched_at || project.state_changed_at
+  const pulseLevel = getPulseLevel(lastActivity, project.state)
+  const momentumClass = project.momentum === 'flowing' ? 'momentum-flowing' :
+                        project.momentum === 'stuck' ? 'momentum-stuck' : ''
+
   return (
     <div
       ref={setNodeRef}
       style={style}
       className={cn(
         'project-card group',
+        `pulse-${pulseLevel}`,
+        momentumClass,
         dragging && 'dragging'
       )}
     >
@@ -50,9 +59,15 @@ export function ProjectCard({ project, isDragging }: ProjectCardProps) {
             to={`/project/${project.id}`}
             className="block group/link"
           >
-            <h3 className="font-medium text-foreground truncate group-hover/link:text-primary transition-colors">
-              {project.name}
-            </h3>
+            <div className="flex items-center gap-2">
+              <span
+                className={cn('pulse-dot', pulseLevel)}
+                title={getPulseLabel(pulseLevel)}
+              />
+              <h3 className="font-medium text-foreground truncate group-hover/link:text-primary transition-colors">
+                {project.name}
+              </h3>
+            </div>
           </Link>
 
           {project.intention && (

@@ -12,7 +12,7 @@ export default defineConfig({
     },
   },
   server: {
-    port: 3002,
+    port: 3000,
     allowedHosts: ['.ngrok-free.app', '.ngrok.io', 'localhost'],
     host: true,
     proxy: {
