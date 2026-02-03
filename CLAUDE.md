@@ -591,9 +591,9 @@ func init() {
 ## Quick Reference: .forge Syntax
 
 ```text
-# App declaration
+# App declaration (auth: password | oauth | jwt | none)
 app Helpdesk {
-  auth: oauth
+  auth: password
   database: postgres
 }
 

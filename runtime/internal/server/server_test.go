@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/forge-lang/forge/runtime/internal/config"
 )
 
 // createTestArtifact creates a minimal artifact for testing
@@ -92,15 +94,27 @@ func createTestServerWithoutDB(t *testing.T) *Server {
 	// Create a logger that discards output during tests
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
+	// Create minimal runtime config for tests
+	runtimeConf := &config.Config{
+		Auth: config.AuthConfig{
+			Provider: "jwt", // Default auth mode
+			JWT: config.JWTConfig{
+				ExpiryHours:        24,
+				RefreshExpiryHours: 168,
+			},
+		},
+	}
+
 	s := &Server{
 		config: &Config{
 			Port:         8080,
 			ArtifactPath: artifactPath,
 		},
-		artifact: &artifact,
-		router:   chi.NewRouter(),
-		hub:      NewHub(),
-		logger:   logger,
+		runtimeConf: runtimeConf,
+		artifact:    &artifact,
+		router:      chi.NewRouter(),
+		hub:         NewHub(),
+		logger:      logger,
 	}
 
 	// Setup routes without database dependency

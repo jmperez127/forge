@@ -305,6 +305,21 @@ func (s *Server) setupRoutes() {
 	// Health check
 	r.Get("/health", s.handleHealth)
 
+	// Auth routes (when password auth enabled)
+	if s.runtimeConf.Auth.Provider == "password" {
+		r.Route("/auth", func(r chi.Router) {
+			r.Post("/register", s.handleRegister)
+			r.Post("/login", s.handleLogin)
+			r.Post("/logout", s.handleLogout)
+			r.Post("/refresh", s.handleRefresh)
+			r.Group(func(r chi.Router) {
+				r.Use(s.requireAuth)
+				r.Get("/me", s.handleMe)
+				r.Post("/change-password", s.handleChangePassword)
+			})
+		})
+	}
+
 	// API routes
 	r.Route("/api", func(r chi.Router) {
 		// Actions
@@ -510,14 +525,24 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 		// Extract Bearer token
 		if len(auth) > 7 && auth[:7] == "Bearer " {
 			token := auth[7:]
-			// Decode base64 JWT payload (simple mock JWT for testing)
-			if decoded, err := base64Decode(token); err == nil {
-				var claims map[string]interface{}
-				if err := json.Unmarshal(decoded, &claims); err == nil {
-					if sub, ok := claims["sub"].(string); ok {
-						// Add user ID to context
-						ctx := context.WithValue(r.Context(), userContextKey{}, sub)
-						r = r.WithContext(ctx)
+
+			// Use proper JWT validation when password auth is enabled with a secret
+			if s.runtimeConf.Auth.Provider == "password" && s.runtimeConf.Auth.JWT.Secret != "" {
+				claims, err := s.validateToken(token)
+				if err == nil && claims.TokenType == "access" {
+					ctx := context.WithValue(r.Context(), userContextKey{}, claims.UserID)
+					r = r.WithContext(ctx)
+				}
+			} else {
+				// Fallback: Decode base64 JWT payload (simple mock JWT for testing)
+				if decoded, err := base64Decode(token); err == nil {
+					var claims map[string]interface{}
+					if err := json.Unmarshal(decoded, &claims); err == nil {
+						if sub, ok := claims["sub"].(string); ok {
+							// Add user ID to context
+							ctx := context.WithValue(r.Context(), userContextKey{}, sub)
+							r = r.WithContext(ctx)
+						}
 					}
 				}
 			}

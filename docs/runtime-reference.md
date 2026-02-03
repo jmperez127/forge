@@ -577,6 +577,151 @@ The server sends periodic pings. Clients should respond with pongs to maintain t
 
 ## Authentication
 
+FORGE supports multiple authentication modes. Set the mode with `auth:` in your `.forge` app declaration.
+
+### Password Authentication
+
+Set `auth: password` for built-in email/password authentication with JWT tokens.
+
+**Configuration (`forge.runtime.toml`):**
+
+```toml
+[auth]
+provider = "password"
+
+[auth.password]
+algorithm = "bcrypt"              # "bcrypt" or "argon2id"
+bcrypt_cost = 12                  # 4-31, default 12
+user_entity = "User"              # Entity name in your .forge spec
+email_field = "email"             # Field for email (default: "email")
+password_field = "password_hash"  # Field for password hash (default: "password_hash")
+registration_fields = ["display_name"]  # Extra fields allowed on registration
+min_length = 8                    # Minimum password length
+
+[auth.jwt]
+secret = "env:JWT_SECRET"         # REQUIRED - signing secret
+issuer = "my-app"                 # JWT issuer claim
+expiry_hours = 24                 # Access token lifetime (default: 24)
+refresh_expiry_hours = 168        # Refresh token lifetime (default: 168 = 7 days)
+```
+
+**Required Entity Schema:**
+
+Your User entity must include email and password_hash fields:
+
+```
+entity User {
+  email: string unique
+  password_hash: string
+  display_name: string?
+}
+```
+
+**Endpoints:**
+
+| Method | Path | Description | Auth Required |
+|--------|------|-------------|---------------|
+| POST | `/auth/register` | Create account | No |
+| POST | `/auth/login` | Login and get tokens | No |
+| POST | `/auth/logout` | Logout (client-side) | No |
+| POST | `/auth/refresh` | Refresh access token | No |
+| GET | `/auth/me` | Get current user | Yes |
+| POST | `/auth/change-password` | Update password | Yes |
+
+**Register Request:**
+```bash
+curl -X POST http://localhost:8080/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "securepassword123",
+    "data": {
+      "display_name": "John Doe"
+    }
+  }'
+```
+
+**Login Request:**
+```bash
+curl -X POST http://localhost:8080/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "securepassword123"
+  }'
+```
+
+**Success Response (register/login):**
+```json
+{
+  "status": "ok",
+  "data": {
+    "access_token": "eyJhbGciOi...",
+    "refresh_token": "eyJhbGciOi...",
+    "expires_in": 86400,
+    "token_type": "Bearer",
+    "user": {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "email": "user@example.com",
+      "display_name": "John Doe"
+    }
+  }
+}
+```
+
+**Refresh Token:**
+```bash
+curl -X POST http://localhost:8080/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"refresh_token": "eyJhbGciOi..."}'
+```
+
+**Get Current User:**
+```bash
+curl http://localhost:8080/auth/me \
+  -H "Authorization: Bearer <access_token>"
+```
+
+**Change Password:**
+```bash
+curl -X POST http://localhost:8080/auth/change-password \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "current_password": "oldpassword",
+    "new_password": "newpassword123"
+  }'
+```
+
+**Auth Error Codes:**
+
+| Code | HTTP Status | Description |
+|------|-------------|-------------|
+| `AUTH_INVALID_CREDENTIALS` | 401 | Wrong email or password |
+| `AUTH_EMAIL_TAKEN` | 409 | Email already registered |
+| `AUTH_WEAK_PASSWORD` | 400 | Password doesn't meet requirements |
+| `AUTH_INVALID_TOKEN` | 401 | Token malformed or signature invalid |
+| `AUTH_TOKEN_EXPIRED` | 401 | Token has expired |
+| `AUTH_REQUIRED` | 401 | No token provided on protected route |
+| `AUTH_INVALID_EMAIL` | 400 | Invalid email format |
+| `AUTH_USER_NOT_FOUND` | 404 | User not found |
+
+**Password Hashing Algorithms:**
+
+- `bcrypt` (default) - Industry standard, cost factor configurable (4-31)
+- `argon2id` - Memory-hard, recommended for new applications
+
+For argon2id, additional configuration:
+```toml
+[auth.password]
+algorithm = "argon2id"
+argon2_memory = 65536      # KB, default 65536 (64MB)
+argon2_iterations = 3      # default 3
+argon2_parallelism = 4     # default 4
+```
+
+---
+
 ### JWT Authentication
 
 Set `auth: jwt` in your app configuration.

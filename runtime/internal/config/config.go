@@ -77,14 +77,46 @@ type JobsConfig struct {
 
 // AuthConfig holds authentication adapter configuration.
 type AuthConfig struct {
-	// Provider: "oauth", "jwt", "session"
+	// Provider: "password", "oauth", "jwt", "none"
 	Provider string `toml:"provider"`
+
+	// Password authentication configuration
+	Password PasswordConfig `toml:"password"`
 
 	// OAuth configuration
 	OAuth OAuthConfig `toml:"oauth"`
 
 	// JWT configuration
 	JWT JWTConfig `toml:"jwt"`
+}
+
+// PasswordConfig holds password authentication configuration.
+type PasswordConfig struct {
+	// Algorithm: "bcrypt" or "argon2id"
+	Algorithm string `toml:"algorithm"`
+
+	// BCryptCost is the bcrypt cost factor (4-31, default 12)
+	BCryptCost int `toml:"bcrypt_cost"`
+
+	// Argon2 parameters
+	Argon2Memory      uint32 `toml:"argon2_memory"`      // KB, default 65536
+	Argon2Iterations  uint32 `toml:"argon2_iterations"`  // default 3
+	Argon2Parallelism uint8  `toml:"argon2_parallelism"` // default 4
+
+	// UserEntity is the entity name for users (default "User")
+	UserEntity string `toml:"user_entity"`
+
+	// EmailField is the field name for email (default "email")
+	EmailField string `toml:"email_field"`
+
+	// PasswordField is the field name for password hash (default "password_hash")
+	PasswordField string `toml:"password_field"`
+
+	// RegistrationFields are extra fields allowed on registration
+	RegistrationFields []string `toml:"registration_fields"`
+
+	// MinLength is the minimum password length (default 8)
+	MinLength int `toml:"min_length"`
 }
 
 // OAuthConfig holds OAuth provider configuration.
@@ -108,8 +140,11 @@ type JWTConfig struct {
 	// Issuer claim
 	Issuer string `toml:"issuer"`
 
-	// ExpiryHours for token validity
+	// ExpiryHours for access token validity (default 24)
 	ExpiryHours int `toml:"expiry_hours"`
+
+	// RefreshExpiryHours for refresh token validity (default 168 = 7 days)
+	RefreshExpiryHours int `toml:"refresh_expiry_hours"`
 }
 
 // EnvironmentOverride holds environment-specific configuration overrides.
@@ -194,8 +229,20 @@ func defaultConfig() *Config {
 		},
 		Auth: AuthConfig{
 			Provider: "jwt",
+			Password: PasswordConfig{
+				Algorithm:         "bcrypt",
+				BCryptCost:        12,
+				Argon2Memory:      65536,
+				Argon2Iterations:  3,
+				Argon2Parallelism: 4,
+				UserEntity:        "User",
+				EmailField:        "email",
+				PasswordField:     "password_hash",
+				MinLength:         8,
+			},
 			JWT: JWTConfig{
-				ExpiryHours: 24,
+				ExpiryHours:        24,
+				RefreshExpiryHours: 168,
 			},
 		},
 	}
@@ -233,6 +280,38 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Auth.JWT.ExpiryHours == 0 {
 		c.Auth.JWT.ExpiryHours = defaults.Auth.JWT.ExpiryHours
+	}
+	if c.Auth.JWT.RefreshExpiryHours == 0 {
+		c.Auth.JWT.RefreshExpiryHours = defaults.Auth.JWT.RefreshExpiryHours
+	}
+
+	// Password auth defaults
+	if c.Auth.Password.Algorithm == "" {
+		c.Auth.Password.Algorithm = defaults.Auth.Password.Algorithm
+	}
+	if c.Auth.Password.BCryptCost == 0 {
+		c.Auth.Password.BCryptCost = defaults.Auth.Password.BCryptCost
+	}
+	if c.Auth.Password.Argon2Memory == 0 {
+		c.Auth.Password.Argon2Memory = defaults.Auth.Password.Argon2Memory
+	}
+	if c.Auth.Password.Argon2Iterations == 0 {
+		c.Auth.Password.Argon2Iterations = defaults.Auth.Password.Argon2Iterations
+	}
+	if c.Auth.Password.Argon2Parallelism == 0 {
+		c.Auth.Password.Argon2Parallelism = defaults.Auth.Password.Argon2Parallelism
+	}
+	if c.Auth.Password.UserEntity == "" {
+		c.Auth.Password.UserEntity = defaults.Auth.Password.UserEntity
+	}
+	if c.Auth.Password.EmailField == "" {
+		c.Auth.Password.EmailField = defaults.Auth.Password.EmailField
+	}
+	if c.Auth.Password.PasswordField == "" {
+		c.Auth.Password.PasswordField = defaults.Auth.Password.PasswordField
+	}
+	if c.Auth.Password.MinLength == 0 {
+		c.Auth.Password.MinLength = defaults.Auth.Password.MinLength
 	}
 }
 

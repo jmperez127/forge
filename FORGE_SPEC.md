@@ -78,11 +78,17 @@ Defines runtime-level intent.
 
 ```text
 app Helpdesk {
-  auth: oauth
+  auth: password | oauth | jwt | none
   database: postgres
   frontend: web
 }
 ```
+
+Auth modes:
+- `password` - Built-in email/password authentication with JWT tokens
+- `oauth` - OAuth 2.0 providers
+- `jwt` - External JWT validation
+- `none` - No authentication
 
 ---
 

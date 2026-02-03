@@ -39,7 +39,7 @@ Defines application-level configuration.
 
 ```text
 app AppName {
-  auth: oauth | jwt | none
+  auth: password | oauth | jwt | none
   database: postgres
   frontend: web | mobile | both
 }
@@ -47,6 +47,10 @@ app AppName {
 
 **Properties:**
 - `auth` - Authentication method (default: `none`)
+  - `password` - Built-in email/password auth with JWT tokens (see [Password Auth](./runtime-reference.md#password-authentication))
+  - `oauth` - OAuth 2.0 providers (Google, GitHub, etc.)
+  - `jwt` - External JWT validation
+  - `none` - No authentication
 - `database` - Database type (only `postgres` supported)
 - `frontend` - Frontend type (default: `web`)
 
