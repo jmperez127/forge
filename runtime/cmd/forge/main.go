@@ -2,7 +2,6 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -509,7 +508,10 @@ Examples:
 func cmdMigrate(args []string) {
 	fs := flag.NewFlagSet("migrate", flag.ExitOnError)
 	apply := fs.Bool("apply", false, "Apply pending migrations")
+	dryRun := fs.Bool("dry-run", false, "Show what would be done without applying")
+	verbose := fs.Bool("verbose", false, "Show detailed output")
 	artifactPath := fs.String("artifact", ".forge-runtime/artifact.json", "Path to artifact.json")
+	databaseURL := fs.String("database", "", "Database URL (overrides config)")
 	fs.Usage = func() {
 		fmt.Print(`Show or apply database migrations
 
@@ -518,53 +520,93 @@ Usage:
 
 Options:
   -apply           Apply pending migrations (default: show only)
+  -dry-run         Show what would be done without applying
+  -verbose         Show detailed output
   -artifact path   Path to artifact.json
+  -database url    Database URL (overrides forge.toml and env)
 
 Examples:
-  forge migrate           # Show pending migrations
-  forge migrate -apply    # Apply migrations
+  forge migrate                    # Show pending migrations
+  forge migrate -apply             # Apply migrations
+  forge migrate -apply -dry-run    # Show what would be applied
+  forge migrate -apply -verbose    # Apply with detailed output
 `)
 	}
 	fs.Parse(args)
 
-	// Load artifact
-	data, err := os.ReadFile(*artifactPath)
+	// Get project directory
+	projectDir, err := os.Getwd()
 	if err != nil {
-		fatal("failed to load artifact: %v\nRun 'forge build' first.", err)
+		fatal("failed to get working directory: %v", err)
 	}
-
-	var artifact struct {
-		Migration *struct {
-			Version string   `json:"version"`
-			Up      []string `json:"up"`
-			Down    []string `json:"down"`
-		} `json:"migration"`
-	}
-	if err := json.Unmarshal(data, &artifact); err != nil {
-		fatal("failed to parse artifact: %v", err)
-	}
-
-	if artifact.Migration == nil {
-		fmt.Println("No migrations defined.")
-		return
-	}
-
-	fmt.Printf("Migration version: %s\n\n", artifact.Migration.Version)
 
 	if *apply {
-		fmt.Println("Applying migrations...")
-		fmt.Println("Migration application not yet implemented.")
-		fmt.Println("Use 'forge run' which auto-applies migrations on startup.")
+		// Apply migrations using the runtime API
+		cfg := &runtimeforge.MigrationConfig{
+			ArtifactPath: *artifactPath,
+			ProjectDir:   projectDir,
+			DatabaseURL:  *databaseURL,
+			DryRun:       *dryRun,
+			Verbose:      *verbose,
+		}
+
+		if *dryRun {
+			fmt.Println("Dry run - showing what would be applied...")
+		} else {
+			fmt.Println("Applying migrations...")
+		}
+
+		result, err := runtimeforge.ApplyMigration(cfg)
+		if err != nil {
+			fatal("Migration failed: %v", err)
+		}
+
+		if result.Version != "" {
+			fmt.Printf("Migration version: %s\n", result.Version)
+		}
+
+		if *dryRun {
+			fmt.Printf("Would apply %d statements\n", result.Applied)
+		} else {
+			fmt.Printf("Applied: %d statements\n", result.Applied)
+			if result.Skipped > 0 {
+				fmt.Printf("Skipped: %d statements (already applied)\n", result.Skipped)
+			}
+			fmt.Printf("Duration: %v\n", result.Duration)
+			fmt.Println("Migration complete!")
+		}
 	} else {
-		fmt.Println("Up migrations:")
-		for _, stmt := range artifact.Migration.Up {
-			fmt.Printf("  %s\n", stmt)
+		// Just show migration status
+		cfg := &runtimeforge.MigrationConfig{
+			ArtifactPath: *artifactPath,
+			ProjectDir:   projectDir,
 		}
-		fmt.Println("\nDown migrations:")
-		for _, stmt := range artifact.Migration.Down {
-			fmt.Printf("  %s\n", stmt)
+
+		status, err := runtimeforge.CheckMigration(cfg)
+		if err != nil {
+			fatal("Failed to check migrations: %v", err)
 		}
-		fmt.Println("\nRun 'forge migrate -apply' to apply these migrations.")
+
+		if status.ArtifactVersion == "" && status.PendingStatements == 0 {
+			fmt.Println("No migrations defined.")
+			return
+		}
+
+		fmt.Printf("Migration version: %s\n", status.ArtifactVersion)
+		fmt.Printf("Pending statements: %d\n", status.PendingStatements)
+
+		if len(status.DangerousChanges) > 0 {
+			fmt.Println("\n⚠️  Dangerous changes detected:")
+			for _, d := range status.DangerousChanges {
+				fmt.Printf("  - %s\n    Reason: %s\n", d.Statement, d.Reason)
+			}
+		}
+
+		if status.HasPendingChanges {
+			fmt.Println("\nRun 'forge migrate -apply' to apply these migrations.")
+		} else {
+			fmt.Println("\nNo pending migrations.")
+		}
 	}
 }
 

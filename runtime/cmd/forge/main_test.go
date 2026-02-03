@@ -1,11 +1,18 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // getForge returns the path to the forge binary for testing.
@@ -303,5 +310,464 @@ func TestToPascalCase(t *testing.T) {
 				t.Errorf("toPascalCase(%q) = %q, want %q", tt.input, result, tt.expected)
 			}
 		})
+	}
+}
+
+// isRoot checks if the test is running as root
+func isRoot() bool {
+	u, err := user.Current()
+	if err != nil {
+		return false
+	}
+	return u.Uid == "0"
+}
+
+// getFreePort returns a free port for testing
+func getFreePort() (int, error) {
+	addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
+	if err != nil {
+		return 0, err
+	}
+	l, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		return 0, err
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port, nil
+}
+
+// TestCLI_Run_Integration tests the forge run command with actual HTTP requests
+func TestCLI_Run_Integration(t *testing.T) {
+	if isRoot() {
+		t.Skip("Skipping integration test: embedded postgres cannot run as root")
+	}
+
+	forge := getForge(t)
+	dir := t.TempDir()
+
+	// Create a minimal valid forge app
+	content := `
+app TestApp {
+  auth: token
+  database: postgres
+}
+
+entity User {
+  email: string unique
+  name: string
+}
+
+access User {
+  read: true
+  write: true
+}
+
+view UserList {
+  source: User
+  fields: id, email, name
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "app.forge"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Build first
+	buildCmd := exec.Command(forge, "build")
+	buildCmd.Dir = dir
+	if output, err := buildCmd.CombinedOutput(); err != nil {
+		t.Fatalf("build command failed: %v\n%s", err, output)
+	}
+
+	// Get a free port
+	port, err := getFreePort()
+	if err != nil {
+		t.Fatalf("failed to get free port: %v", err)
+	}
+
+	// Start the server
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	runCmd := exec.CommandContext(ctx, forge, "run", "-port", fmt.Sprintf("%d", port))
+	runCmd.Dir = dir
+	runCmd.Env = append(os.Environ(), "FORGE_ENV=development")
+
+	// Capture output for debugging
+	var stdout, stderr strings.Builder
+	runCmd.Stdout = &stdout
+	runCmd.Stderr = &stderr
+
+	if err := runCmd.Start(); err != nil {
+		t.Fatalf("failed to start server: %v", err)
+	}
+
+	// Clean up server on test completion
+	defer func() {
+		runCmd.Process.Kill()
+		runCmd.Wait()
+	}()
+
+	// Wait for server to be ready
+	baseURL := fmt.Sprintf("http://localhost:%d", port)
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	ready := false
+	for i := 0; i < 30; i++ {
+		resp, err := client.Get(baseURL + "/health")
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == 200 {
+				ready = true
+				break
+			}
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	if !ready {
+		t.Fatalf("Server did not become ready\nstdout: %s\nstderr: %s", stdout.String(), stderr.String())
+	}
+
+	// Test health endpoint
+	t.Run("health endpoint", func(t *testing.T) {
+		resp, err := client.Get(baseURL + "/health")
+		if err != nil {
+			t.Fatalf("health request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != 200 {
+			t.Errorf("expected status 200, got %d", resp.StatusCode)
+		}
+
+		var response struct {
+			Status string                 `json:"status"`
+			Data   map[string]interface{} `json:"data"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
+
+		if response.Status != "ok" {
+			t.Errorf("expected status ok, got %s", response.Status)
+		}
+		if response.Data["app"] != "TestApp" {
+			t.Errorf("expected app TestApp, got %v", response.Data["app"])
+		}
+	})
+
+	// Test /_dev endpoint (should work in development mode)
+	t.Run("dev dashboard", func(t *testing.T) {
+		resp, err := client.Get(baseURL + "/_dev")
+		if err != nil {
+			t.Fatalf("dev request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != 200 {
+			t.Errorf("expected status 200 for /_dev, got %d", resp.StatusCode)
+		}
+	})
+
+	// Test /_dev/info endpoint
+	t.Run("dev info", func(t *testing.T) {
+		resp, err := client.Get(baseURL + "/_dev/info")
+		if err != nil {
+			t.Fatalf("dev info request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != 200 {
+			t.Errorf("expected status 200 for /_dev/info, got %d", resp.StatusCode)
+		}
+	})
+
+	// Test debug/artifact endpoint
+	t.Run("artifact endpoint", func(t *testing.T) {
+		resp, err := client.Get(baseURL + "/debug/artifact")
+		if err != nil {
+			t.Fatalf("artifact request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != 200 {
+			t.Errorf("expected status 200, got %d", resp.StatusCode)
+		}
+	})
+}
+
+// TestCLI_Migrate_Status tests the forge migrate command (status only)
+func TestCLI_Migrate_Status(t *testing.T) {
+	forge := getForge(t)
+	dir := t.TempDir()
+
+	// Create a minimal valid forge app
+	content := `
+app TestApp {
+  auth: token
+  database: postgres
+}
+
+entity User {
+  email: string unique
+  name: string
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "app.forge"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Build first
+	buildCmd := exec.Command(forge, "build")
+	buildCmd.Dir = dir
+	if output, err := buildCmd.CombinedOutput(); err != nil {
+		t.Fatalf("build command failed: %v\n%s", err, output)
+	}
+
+	// Run migrate (status only, no database needed)
+	migrateCmd := exec.Command(forge, "migrate")
+	migrateCmd.Dir = dir
+	output, err := migrateCmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("migrate command failed: %v\n%s", err, output)
+	}
+
+	// Check output
+	if !strings.Contains(string(output), "Migration version:") {
+		t.Errorf("expected 'Migration version:' in output, got: %s", output)
+	}
+	if !strings.Contains(string(output), "Pending statements:") {
+		t.Errorf("expected 'Pending statements:' in output, got: %s", output)
+	}
+}
+
+// TestCLI_Migrate_DryRun tests the forge migrate -apply -dry-run command
+func TestCLI_Migrate_DryRun(t *testing.T) {
+	forge := getForge(t)
+	dir := t.TempDir()
+
+	// Create a minimal valid forge app
+	content := `
+app TestApp {
+  auth: token
+  database: postgres
+}
+
+entity User {
+  email: string unique
+  name: string
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "app.forge"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Build first
+	buildCmd := exec.Command(forge, "build")
+	buildCmd.Dir = dir
+	if output, err := buildCmd.CombinedOutput(); err != nil {
+		t.Fatalf("build command failed: %v\n%s", err, output)
+	}
+
+	// Run migrate with dry-run
+	migrateCmd := exec.Command(forge, "migrate", "-apply", "-dry-run")
+	migrateCmd.Dir = dir
+	output, err := migrateCmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("migrate dry-run command failed: %v\n%s", err, output)
+	}
+
+	// Check output
+	if !strings.Contains(string(output), "Dry run") {
+		t.Errorf("expected 'Dry run' in output, got: %s", output)
+	}
+	if !strings.Contains(string(output), "Would apply") {
+		t.Errorf("expected 'Would apply' in output, got: %s", output)
+	}
+}
+
+// TestCLI_Dev_HotReload tests the forge dev command with hot-reload
+func TestCLI_Dev_HotReload(t *testing.T) {
+	if isRoot() {
+		t.Skip("Skipping integration test: embedded postgres cannot run as root")
+	}
+
+	forge := getForge(t)
+	dir := t.TempDir()
+
+	// Create initial forge app
+	initialContent := `
+app TestApp {
+  auth: token
+  database: postgres
+}
+
+entity User {
+  email: string unique
+  name: string
+}
+
+access User {
+  read: true
+  write: true
+}
+
+view UserList {
+  source: User
+  fields: id, email, name
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "app.forge"), []byte(initialContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Get a free port
+	port, err := getFreePort()
+	if err != nil {
+		t.Fatalf("failed to get free port: %v", err)
+	}
+
+	// Start forge dev
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+
+	devCmd := exec.CommandContext(ctx, forge, "dev", "-port", fmt.Sprintf("%d", port))
+	devCmd.Dir = dir
+	devCmd.Env = append(os.Environ(), "FORGE_ENV=development")
+
+	// Capture output
+	var stdout, stderr strings.Builder
+	devCmd.Stdout = &stdout
+	devCmd.Stderr = &stderr
+
+	if err := devCmd.Start(); err != nil {
+		t.Fatalf("failed to start dev server: %v", err)
+	}
+
+	defer func() {
+		devCmd.Process.Kill()
+		devCmd.Wait()
+	}()
+
+	// Wait for server to be ready
+	baseURL := fmt.Sprintf("http://localhost:%d", port)
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	ready := false
+	for i := 0; i < 30; i++ {
+		resp, err := client.Get(baseURL + "/health")
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == 200 {
+				ready = true
+				break
+			}
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+
+	if !ready {
+		t.Fatalf("Dev server did not become ready\nstdout: %s\nstderr: %s", stdout.String(), stderr.String())
+	}
+
+	// Verify initial state - check artifact
+	t.Run("initial state", func(t *testing.T) {
+		resp, err := client.Get(baseURL + "/debug/artifact")
+		if err != nil {
+			t.Fatalf("artifact request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		var response struct {
+			Status string `json:"status"`
+			Data   struct {
+				Entities map[string]interface{} `json:"entities"`
+			} `json:"data"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
+
+		// Should have User entity
+		if _, ok := response.Data.Entities["User"]; !ok {
+			t.Error("expected User entity in initial artifact")
+		}
+	})
+
+	// Modify the .forge file to add a new entity
+	updatedContent := `
+app TestApp {
+  auth: token
+  database: postgres
+}
+
+entity User {
+  email: string unique
+  name: string
+}
+
+entity Post {
+  title: string
+  content: string
+}
+
+access User {
+  read: true
+  write: true
+}
+
+access Post {
+  read: true
+  write: true
+}
+
+view UserList {
+  source: User
+  fields: id, email, name
+}
+
+view PostList {
+  source: Post
+  fields: id, title
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "app.forge"), []byte(updatedContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Wait for hot-reload to complete (should see "Rebuild successful" in output)
+	time.Sleep(3 * time.Second)
+
+	// Verify hot-reload - check for new entity
+	t.Run("after hot-reload", func(t *testing.T) {
+		resp, err := client.Get(baseURL + "/debug/artifact")
+		if err != nil {
+			t.Fatalf("artifact request failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		var response struct {
+			Status string `json:"status"`
+			Data   struct {
+				Entities map[string]interface{} `json:"entities"`
+			} `json:"data"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+			t.Fatalf("failed to decode response: %v", err)
+		}
+
+		// Should have both User and Post entities
+		if _, ok := response.Data.Entities["User"]; !ok {
+			t.Error("expected User entity after hot-reload")
+		}
+		if _, ok := response.Data.Entities["Post"]; !ok {
+			t.Error("expected Post entity after hot-reload (hot-reload may have failed)")
+		}
+	})
+
+	// Verify the output contains hot-reload messages
+	output := stdout.String()
+	if !strings.Contains(output, "Watching") {
+		t.Log("Warning: Output doesn't contain 'Watching' - file watcher may not have started")
 	}
 }
