@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams, Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { NORTH_STAR } from '@/lib/philosophy'
-import { Sparkles, User, Lock, Mail, AlertCircle } from 'lucide-react'
+import { Sparkles, User, Lock, Mail, AlertCircle, ArrowLeft } from 'lucide-react'
 
 interface LoginProps {
   onLogin: (token: string, isNewUser: boolean) => void
@@ -52,7 +53,18 @@ function findUserByEmail(email: string): { id: string; passwordHash: string; dis
 }
 
 export function Login({ onLogin }: LoginProps) {
-  const [tab, setTab] = useState<'login' | 'register'>('login')
+  const [searchParams] = useSearchParams()
+  const [tab, setTab] = useState<'login' | 'register'>(() => {
+    return searchParams.get('tab') === 'register' ? 'register' : 'login'
+  })
+
+  // Update tab if URL changes
+  useEffect(() => {
+    const urlTab = searchParams.get('tab')
+    if (urlTab === 'register') {
+      setTab('register')
+    }
+  }, [searchParams])
 
   // Login state
   const [loginEmail, setLoginEmail] = useState('')
@@ -121,6 +133,14 @@ export function Login({ onLogin }: LoginProps) {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-md">
+        {/* Back to landing */}
+        <div className="mb-6">
+          <Link to="/" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <ArrowLeft className="h-4 w-4" />
+            Back to home
+          </Link>
+        </div>
+
         <div className="text-center mb-8">
           <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
             <Sparkles className="h-6 w-6 text-primary" />

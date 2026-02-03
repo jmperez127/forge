@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import { ForgeProvider } from '@forge/react'
 import { ThemeProvider } from '@/context/ThemeContext'
 import { Header } from '@/components/layout/Header'
@@ -8,6 +8,7 @@ import { Project } from '@/pages/Project'
 import { Review } from '@/pages/Review'
 import { NewProject } from '@/pages/NewProject'
 import { Login } from '@/pages/Login'
+import { Landing } from '@/pages/Landing'
 import { Onboarding } from '@/components/onboarding/Onboarding'
 
 function Layout({ children, onLogout }: { children: React.ReactNode; onLogout: () => void }) {
@@ -36,8 +37,7 @@ export default function App() {
   })
 
   const [showOnboarding, setShowOnboarding] = useState<boolean>(() => {
-    // Show onboarding if user hasn't completed it
-    return !localStorage.getItem('endeavor_onboarding_complete')
+    return false // Will be set to true on new user registration
   })
 
   function handleLogin(newToken: string, isNewUser: boolean) {
@@ -58,16 +58,8 @@ export default function App() {
     setToken(null)
   }
 
-  if (!token) {
-    return (
-      <ThemeProvider>
-        <Login onLogin={handleLogin} />
-      </ThemeProvider>
-    )
-  }
-
-  // Show onboarding for new users
-  if (showOnboarding) {
+  // Show onboarding for new users (after login)
+  if (token && showOnboarding) {
     return (
       <ThemeProvider>
         <Onboarding onComplete={handleOnboardingComplete} />
@@ -75,23 +67,39 @@ export default function App() {
     )
   }
 
-  const forgeConfig = {
-    url: import.meta.env.VITE_API_URL || '',
-    token: token,
+  // Authenticated user - show app
+  if (token) {
+    const forgeConfig = {
+      url: import.meta.env.VITE_API_URL || '',
+      token: token,
+    }
+
+    return (
+      <ThemeProvider>
+        <ForgeProvider config={forgeConfig}>
+          <Layout onLogout={handleLogout}>
+            <Routes>
+              <Route path="/" element={<Board />} />
+              <Route path="/project/:id" element={<Project />} />
+              <Route path="/review" element={<Review />} />
+              <Route path="/new" element={<NewProject />} />
+              <Route path="/login" element={<Navigate to="/" replace />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Layout>
+        </ForgeProvider>
+      </ThemeProvider>
+    )
   }
 
+  // Unauthenticated - show landing or login
   return (
     <ThemeProvider>
-      <ForgeProvider config={forgeConfig}>
-        <Layout onLogout={handleLogout}>
-          <Routes>
-            <Route path="/" element={<Board />} />
-            <Route path="/project/:id" element={<Project />} />
-            <Route path="/review" element={<Review />} />
-            <Route path="/new" element={<NewProject />} />
-          </Routes>
-        </Layout>
-      </ForgeProvider>
+      <Routes>
+        <Route path="/" element={<Landing />} />
+        <Route path="/login" element={<Login onLogin={handleLogin} />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
     </ThemeProvider>
   )
 }
