@@ -55,8 +55,8 @@ FORGE is what Rails would look like if invented AFTER we understood distributed 
 forge/
 ├── compiler/
 │   ├── go.mod                 # github.com/forge-lang/forge/compiler
-│   ├── cmd/
-│   │   └── forge/main.go      # CLI entry point
+│   ├── forge/                 # Public API for compilation
+│   │   └── compile.go         # Compile() and Check() functions
 │   └── internal/
 │       ├── token/             # Token types
 │       ├── lexer/             # Tokenization
@@ -71,9 +71,18 @@ forge/
 ├── runtime/
 │   ├── go.mod                 # github.com/forge-lang/forge/runtime
 │   ├── cmd/
-│   │   └── forge-runtime/     # Runtime binary
+│   │   └── forge/             # CLI entry point (unified binary)
+│   │       ├── main.go        # All CLI commands
+│   │       └── main_test.go   # CLI tests
+│   ├── forge/                 # Public API for runtime
+│   │   └── server.go          # NewServer() function
 │   └── internal/
-│       └── server/            # HTTP + WebSocket server
+│       ├── server/            # HTTP + WebSocket server
+│       ├── db/                # Database abstraction
+│       └── config/            # Configuration management
+│
+├── bin/                       # Built binaries (gitignored)
+│   └── forge                  # The forge CLI
 │
 ├── sdk/
 │   └── typescript/
@@ -81,7 +90,8 @@ forge/
 │       └── react/             # @forge/react
 │
 ├── projects/                  # Real test applications
-│   └── helpdesk/              # Example: Ticket system
+│   ├── helpdesk/              # Example: Ticket system
+│   └── chat/                  # Example: Real-time chat
 │
 └── e2e/                       # End-to-end tests (Playwright)
     ├── tests/                 # Test specs
@@ -262,21 +272,47 @@ client.subscribe('TicketList', {
 
 ### Build & Run
 ```bash
-# Build compiler
-cd compiler && go build -o ../bin/forge ./cmd/forge
+# Build the forge CLI (from repository root)
+cd runtime && go build -o ../bin/forge ./cmd/forge
 
-# Build runtime
-cd runtime && go build -o ../bin/forge-runtime ./cmd/forge-runtime
+# Verify it works
+./bin/forge version
+./bin/forge help
+```
 
-# Run CLI commands
-./bin/forge init myapp
-./bin/forge check
-./bin/forge build
-./bin/forge dev
-./bin/forge run
+### CLI Commands
+```bash
+# Create a new project
+forge init myapp
+cd myapp
 
-# Build helpdesk example
-cd projects/helpdesk/spec && ../../../bin/forge build
+# Validate .forge files (parse + analyze, no code generation)
+forge check
+
+# Compile to runtime artifact + schema + SDK
+forge build                    # outputs to .forge-runtime/
+forge build -o dist            # custom output directory
+
+# Start the runtime server
+forge run                      # default port 8080
+forge run -port 3000           # custom port
+forge run -db "postgres://..." # override database URL
+
+# Development mode (build + run + watch for changes)
+forge dev                      # hot reload on file changes
+forge dev -port 3000
+
+# Show/apply migrations
+forge migrate                  # show pending migrations
+forge migrate -apply           # apply migrations (WIP)
+```
+
+### Build Helpdesk Example
+```bash
+cd projects/helpdesk
+../../bin/forge check          # validate
+../../bin/forge build          # compile
+../../bin/forge run            # start server
 ```
 
 ### Development Mode (Hot Reload)
