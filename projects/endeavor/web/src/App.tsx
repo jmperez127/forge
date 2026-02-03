@@ -9,6 +9,7 @@ import { Review } from '@/pages/Review'
 import { NewProject } from '@/pages/NewProject'
 import { Login } from '@/pages/Login'
 import { Landing } from '@/pages/Landing'
+import { Profile } from '@/pages/Profile'
 import { Onboarding } from '@/components/onboarding/Onboarding'
 
 function Layout({ children, onLogout }: { children: React.ReactNode; onLogout: () => void }) {
@@ -83,6 +84,7 @@ export default function App() {
               <Route path="/project/:id" element={<Project />} />
               <Route path="/review" element={<Review />} />
               <Route path="/new" element={<NewProject />} />
+              <Route path="/profile" element={<Profile onLogout={handleLogout} />} />
               <Route path="/login" element={<Navigate to="/" replace />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>

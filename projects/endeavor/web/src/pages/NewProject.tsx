@@ -43,6 +43,7 @@ export function NewProject() {
         state_changed_at: now,
         review_at: now,
         archived: false,
+        last_touched_at: now,
       })
 
       navigate('/')

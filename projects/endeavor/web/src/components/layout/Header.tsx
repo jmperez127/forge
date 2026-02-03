@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
-import { Compass, Calendar, Plus, Sun, Moon, LogOut } from 'lucide-react'
+import { Compass, Calendar, Plus, Sun, Moon, LogOut, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from '@/context/ThemeContext'
 
@@ -84,6 +84,16 @@ export function Header({ onLogout }: HeaderProps) {
               <Button variant="default" className="gap-2">
                 <Plus className="h-4 w-4" />
                 New Project
+              </Button>
+            </Link>
+            <Link to="/profile">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-muted-foreground hover:text-foreground"
+                title="Profile"
+              >
+                <User className="h-5 w-5" />
               </Button>
             </Link>
             {onLogout && (
