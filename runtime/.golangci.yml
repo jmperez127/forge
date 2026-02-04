@@ -1,0 +1,22 @@
+# golangci-lint configuration for FORGE runtime
+linters:
+  enable:
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+  disable:
+    # Temporarily disable errcheck - too many false positives in HTTP handlers
+    # and WebSocket code where error handling is intentionally deferred
+    - errcheck
+
+linters-settings:
+  staticcheck:
+    checks: ["all", "-SA1019"]  # Ignore deprecation warnings for now
+
+issues:
+  # Don't report issues in test files
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck
