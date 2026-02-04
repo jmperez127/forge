@@ -8,7 +8,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
   use: {
-    baseURL: 'http://localhost:3002',
+    baseURL: 'http://localhost:3000',
     trace: 'on-first-retry',
   },
   projects: [
@@ -19,14 +19,14 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'cd .. && ../../bin/forge run -port 8082',
-      url: 'http://localhost:8082/_dev',
+      command: 'cd .. && JWT_SECRET=test-secret-for-e2e ../../bin/forge run -port 8082',
+      url: 'http://localhost:8082/health',
       reuseExistingServer: !process.env.CI,
       timeout: 120000,
     },
     {
-      command: 'npm run dev',
-      url: 'http://localhost:3002',
+      command: 'npm run dev -- --port 3000',
+      url: 'http://localhost:3000',
       reuseExistingServer: !process.env.CI,
       timeout: 30000,
     },

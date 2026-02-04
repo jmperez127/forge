@@ -1,113 +1,143 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { ArrowLeft, User, Lock, Check, AlertCircle } from 'lucide-react'
+import { ArrowLeft, User, Lock, Check, AlertCircle, Loader2 } from 'lucide-react'
 
 interface ProfileProps {
   onLogout: () => void
 }
 
-// Get current user from token
-function getCurrentUser(): { id: string; email: string; displayName: string } | null {
-  try {
-    const token = localStorage.getItem('endeavor_token')
-    if (!token) return null
-    const payload = JSON.parse(atob(token))
-    const users = JSON.parse(localStorage.getItem('endeavor_users') || '{}')
-    const user = users[payload.sub]
-    if (!user) return null
-    return { id: payload.sub, email: user.email, displayName: user.displayName }
-  } catch {
-    return null
-  }
-}
+const API_URL = import.meta.env.VITE_API_URL || ''
 
-// Simple hash - matches Login.tsx
-function simpleHash(str: string): string {
-  let hash = 0
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i)
-    hash = ((hash << 5) - hash) + char
-    hash = hash & hash
-  }
-  return hash.toString(16)
-}
-
-function updateUser(id: string, updates: { displayName?: string; passwordHash?: string }) {
-  const users = JSON.parse(localStorage.getItem('endeavor_users') || '{}')
-  if (users[id]) {
-    users[id] = { ...users[id], ...updates }
-    localStorage.setItem('endeavor_users', JSON.stringify(users))
-    return true
-  }
-  return false
-}
-
-function verifyPassword(id: string, password: string): boolean {
-  const users = JSON.parse(localStorage.getItem('endeavor_users') || '{}')
-  if (users[id]) {
-    return users[id].passwordHash === simpleHash(password)
-  }
-  return false
+interface UserData {
+  id: string
+  email: string
+  display_name?: string
 }
 
 export function Profile({ onLogout }: ProfileProps) {
-  const user = getCurrentUser()
+  const [user, setUser] = useState<UserData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
-  const [displayName, setDisplayName] = useState(user?.displayName || '')
-  const [nameSuccess, setNameSuccess] = useState(false)
+  const [displayName, setDisplayName] = useState('')
 
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [passwordError, setPasswordError] = useState('')
   const [passwordSuccess, setPasswordSuccess] = useState(false)
+  const [passwordLoading, setPasswordLoading] = useState(false)
 
-  function handleUpdateName(e: React.FormEvent) {
-    e.preventDefault()
-    if (!user || !displayName.trim()) return
+  // Fetch current user on mount
+  useEffect(() => {
+    async function fetchUser() {
+      const token = localStorage.getItem('endeavor_token')
+      if (!token) {
+        setError('Not authenticated')
+        setLoading(false)
+        return
+      }
 
-    updateUser(user.id, { displayName: displayName.trim() })
-    setNameSuccess(true)
-    setTimeout(() => setNameSuccess(false), 3000)
-  }
+      try {
+        const response = await fetch(`${API_URL}/auth/me`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        })
 
-  function handleUpdatePassword(e: React.FormEvent) {
+        const data = await response.json()
+
+        if (data.status === 'error' || !data.data) {
+          setError(data.messages?.[0]?.message || 'Failed to load profile')
+          return
+        }
+
+        setUser(data.data)
+        setDisplayName(data.data.display_name || '')
+      } catch (err) {
+        setError('Unable to connect to server')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchUser()
+  }, [])
+
+  async function handleUpdatePassword(e: React.FormEvent) {
     e.preventDefault()
     setPasswordError('')
     setPasswordSuccess(false)
+    setPasswordLoading(true)
 
-    if (!user) return
-
-    if (!verifyPassword(user.id, currentPassword)) {
-      setPasswordError('Current password is incorrect')
-      return
-    }
-
-    if (newPassword.length < 6) {
-      setPasswordError('New password must be at least 6 characters')
+    if (newPassword.length < 8) {
+      setPasswordError('New password must be at least 8 characters')
+      setPasswordLoading(false)
       return
     }
 
     if (newPassword !== confirmPassword) {
       setPasswordError('New passwords do not match')
+      setPasswordLoading(false)
       return
     }
 
-    updateUser(user.id, { passwordHash: simpleHash(newPassword) })
-    setPasswordSuccess(true)
-    setCurrentPassword('')
-    setNewPassword('')
-    setConfirmPassword('')
-    setTimeout(() => setPasswordSuccess(false), 3000)
+    const token = localStorage.getItem('endeavor_token')
+    if (!token) {
+      setPasswordError('Not authenticated')
+      setPasswordLoading(false)
+      return
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/auth/change-password`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: newPassword,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (data.status === 'error') {
+        setPasswordError(data.messages?.[0]?.message || 'Failed to update password')
+        return
+      }
+
+      setPasswordSuccess(true)
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+      setTimeout(() => setPasswordSuccess(false), 3000)
+    } catch (err) {
+      setPasswordError('Unable to connect to server')
+    } finally {
+      setPasswordLoading(false)
+    }
   }
 
-  if (!user) {
+  if (loading) {
     return (
       <div className="max-w-xl mx-auto text-center py-12">
-        <p className="text-muted-foreground">Unable to load profile.</p>
+        <Loader2 className="h-8 w-8 animate-spin mx-auto text-muted-foreground" />
+        <p className="text-muted-foreground mt-4">Loading profile...</p>
+      </div>
+    )
+  }
+
+  if (error || !user) {
+    return (
+      <div className="max-w-xl mx-auto text-center py-12">
+        <AlertCircle className="h-8 w-8 mx-auto text-red-500" />
+        <p className="text-muted-foreground mt-4">{error || 'Unable to load profile.'}</p>
       </div>
     )
   }
@@ -141,24 +171,17 @@ export function Profile({ onLogout }: ProfileProps) {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleUpdateName} className="space-y-4">
+            <div className="space-y-4">
               <Input
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="Your name"
+                disabled
               />
-
-              {nameSuccess && (
-                <div className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400">
-                  <Check className="h-4 w-4" />
-                  Name updated successfully
-                </div>
-              )}
-
-              <Button type="submit" disabled={!displayName.trim()}>
-                Update Name
-              </Button>
-            </form>
+              <p className="text-xs text-muted-foreground">
+                Display name cannot be changed at this time
+              </p>
+            </div>
           </CardContent>
         </Card>
 
@@ -204,6 +227,7 @@ export function Profile({ onLogout }: ProfileProps) {
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
                   placeholder="Enter current password"
+                  disabled={passwordLoading}
                 />
               </div>
 
@@ -215,7 +239,8 @@ export function Profile({ onLogout }: ProfileProps) {
                   type="password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Enter new password (6+ characters)"
+                  placeholder="Enter new password (8+ characters)"
+                  disabled={passwordLoading}
                 />
               </div>
 
@@ -228,6 +253,7 @@ export function Profile({ onLogout }: ProfileProps) {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Confirm new password"
+                  disabled={passwordLoading}
                 />
               </div>
 
@@ -247,9 +273,16 @@ export function Profile({ onLogout }: ProfileProps) {
 
               <Button
                 type="submit"
-                disabled={!currentPassword || !newPassword || !confirmPassword}
+                disabled={!currentPassword || !newPassword || !confirmPassword || passwordLoading}
               >
-                Update Password
+                {passwordLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  'Update Password'
+                )}
               </Button>
             </form>
           </CardContent>

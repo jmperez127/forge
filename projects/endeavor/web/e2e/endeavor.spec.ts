@@ -1,10 +1,155 @@
 import { test, expect } from '@playwright/test'
 
-test.describe('Endeavor - Philosophy-Driven Project Management', () => {
-  test.beforeEach(async ({ page }) => {
-    // Wait for API to be ready
+// Test user credentials
+const TEST_USER = {
+  email: `test-${Date.now()}@endeavor.app`,
+  password: 'testpassword123',
+  name: 'Test User',
+}
+
+test.describe('Authentication', () => {
+  test('should show landing page when not logged in', async ({ page }) => {
     await page.goto('/')
-    // Wait for the page to fully render (wait for the NorthStar component or header)
+    await expect(page.getByText('Projects are not tasks to complete')).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Begin' })).toBeVisible()
+  })
+
+  test('should navigate to login page', async ({ page }) => {
+    await page.goto('/')
+    await page.getByRole('link', { name: 'Enter' }).click()
+    await expect(page).toHaveURL('/login')
+    await expect(page.getByRole('tab', { name: 'Sign In' })).toBeVisible()
+  })
+
+  test('should register a new user', async ({ page }) => {
+    const uniqueEmail = `test-${Date.now()}@endeavor.app`
+    await page.goto('/login?tab=register')
+
+    await page.getByPlaceholder('Your name').fill('New User')
+    await page.getByPlaceholder('Email').fill(uniqueEmail)
+    await page.getByPlaceholder('Password (8+ characters)').fill('password123')
+    await page.getByPlaceholder('Confirm password').fill('password123')
+
+    await page.getByRole('button', { name: 'Begin Your Journey' }).click()
+
+    // Should redirect to onboarding or board
+    await expect(page).not.toHaveURL('/login', { timeout: 10000 })
+  })
+
+  test('should show error for mismatched passwords', async ({ page }) => {
+    await page.goto('/login?tab=register')
+
+    await page.getByPlaceholder('Your name').fill('Test User')
+    await page.getByPlaceholder('Email').fill('test@example.com')
+    await page.getByPlaceholder('Password (8+ characters)').fill('password123')
+    await page.getByPlaceholder('Confirm password').fill('different456')
+
+    await page.getByRole('button', { name: 'Begin Your Journey' }).click()
+
+    await expect(page.getByText('Passwords do not match')).toBeVisible()
+  })
+
+  test('should show error for short password', async ({ page }) => {
+    await page.goto('/login?tab=register')
+
+    await page.getByPlaceholder('Your name').fill('Test User')
+    await page.getByPlaceholder('Email').fill('test@example.com')
+    await page.getByPlaceholder('Password (8+ characters)').fill('short')
+    await page.getByPlaceholder('Confirm password').fill('short')
+
+    await page.getByRole('button', { name: 'Begin Your Journey' }).click()
+
+    await expect(page.getByText('Password must be at least 8 characters')).toBeVisible()
+  })
+
+  test('should login with valid credentials', async ({ page }) => {
+    // First register
+    const uniqueEmail = `login-test-${Date.now()}@endeavor.app`
+    await page.goto('/login?tab=register')
+    await page.getByPlaceholder('Your name').fill('Login Test')
+    await page.getByPlaceholder('Email').fill(uniqueEmail)
+    await page.getByPlaceholder('Password (8+ characters)').fill('password123')
+    await page.getByPlaceholder('Confirm password').fill('password123')
+
+    // Monitor network to verify registration succeeds
+    const responsePromise = page.waitForResponse(resp =>
+      resp.url().includes('/auth/register') && resp.status() === 201
+    )
+    await page.getByRole('button', { name: 'Begin Your Journey' }).click()
+
+    // Wait for successful registration response
+    const response = await responsePromise.catch(() => null)
+    if (!response) {
+      // Check if there's an error on the page
+      const error = await page.getByText('Unable to connect').isVisible().catch(() => false)
+      if (error) {
+        throw new Error('Registration failed: Unable to connect to server')
+      }
+    }
+
+    await expect(page).not.toHaveURL('/login', { timeout: 10000 })
+
+    // Clear tokens to simulate logout
+    await page.evaluate(() => {
+      localStorage.removeItem('endeavor_token')
+      localStorage.removeItem('endeavor_refresh_token')
+    })
+
+    // Go to landing page
+    await page.goto('/')
+    await expect(page.getByRole('link', { name: 'Begin' })).toBeVisible({ timeout: 10000 })
+
+    // Login with the registered credentials
+    await page.goto('/login')
+    await page.getByPlaceholder('Email').fill(uniqueEmail)
+    await page.getByPlaceholder('Password').fill('password123')
+    await page.getByRole('button', { name: 'Enter' }).click()
+
+    // Should be logged in (redirected away from /login)
+    await expect(page).not.toHaveURL('/login', { timeout: 10000 })
+  })
+
+  test('should show error for invalid credentials', async ({ page }) => {
+    await page.goto('/login')
+    await page.getByPlaceholder('Email').fill('nonexistent@example.com')
+    await page.getByPlaceholder('Password').fill('wrongpassword')
+    await page.getByRole('button', { name: 'Enter' }).click()
+
+    await expect(page.getByText('Invalid email or password')).toBeVisible()
+  })
+})
+
+test.describe('Endeavor - Philosophy-Driven Project Management', () => {
+  // Register and login before each test
+  test.beforeEach(async ({ page }) => {
+    // Check if already logged in
+    await page.goto('/')
+
+    // If we see the landing page, we need to login
+    const isLandingPage = await page.getByRole('link', { name: 'Begin' }).isVisible().catch(() => false)
+
+    if (isLandingPage) {
+      // Register a new user for this test
+      const uniqueEmail = `e2e-${Date.now()}@endeavor.app`
+      await page.goto('/login?tab=register')
+      await page.getByPlaceholder('Your name').fill('E2E Test User')
+      await page.getByPlaceholder('Email').fill(uniqueEmail)
+      await page.getByPlaceholder('Password (8+ characters)').fill('password123')
+      await page.getByPlaceholder('Confirm password').fill('password123')
+      await page.getByRole('button', { name: 'Begin Your Journey' }).click()
+
+      // Wait for redirect (might go to onboarding or board)
+      await page.waitForURL(url => !url.pathname.includes('/login'), { timeout: 10000 })
+
+      // If onboarding, skip it
+      const skipButton = page.getByRole('button', { name: 'Skip' })
+      if (await skipButton.isVisible().catch(() => false)) {
+        await skipButton.click()
+      }
+    }
+
+    // Now go to the main board
+    await page.goto('/')
     await page.waitForLoadState('networkidle')
   })
 

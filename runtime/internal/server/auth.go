@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"reflect"
 	"regexp"
 	"strings"
 	"time"
@@ -687,10 +688,10 @@ func (s *Server) getUserByID(ctx context.Context, userID string) (map[string]int
 		return nil, err
 	}
 
-	// Build result map
+	// Build result map with JSON-friendly type conversion
 	userData := make(map[string]interface{})
 	for i, field := range fields {
-		userData[field] = values[i]
+		userData[field] = convertToJSONFriendly(values[i])
 	}
 
 	return userData, nil
@@ -748,4 +749,52 @@ func (s *Server) updateUserPassword(ctx context.Context, userID, passwordHash st
 
 	_, err := s.db.Exec(ctx, query, passwordHash, userID)
 	return err
+}
+
+// convertToJSONFriendly converts pgx types to JSON-serializable Go types.
+func convertToJSONFriendly(v interface{}) interface{} {
+	if v == nil {
+		return nil
+	}
+
+	switch val := v.(type) {
+	case [16]byte:
+		// UUID as byte array -> string
+		return fmt.Sprintf("%x-%x-%x-%x-%x", val[0:4], val[4:6], val[6:8], val[8:10], val[10:16])
+	case []byte:
+		// Byte slice could be UUID or other binary
+		if len(val) == 16 {
+			return fmt.Sprintf("%x-%x-%x-%x-%x", val[0:4], val[4:6], val[6:8], val[8:10], val[10:16])
+		}
+		return string(val)
+	case time.Time:
+		return val.Format(time.RFC3339)
+	default:
+		// Check for pgtype types using reflection
+		// pgtype.Timestamptz has a Time field and Valid bool
+		rv := reflect.ValueOf(v)
+		if rv.Kind() == reflect.Struct {
+			// Check for Time field (pgtype timestamp types)
+			if timeField := rv.FieldByName("Time"); timeField.IsValid() {
+				if validField := rv.FieldByName("Valid"); validField.IsValid() && validField.Bool() {
+					if t, ok := timeField.Interface().(time.Time); ok {
+						return t.Format(time.RFC3339)
+					}
+				}
+				return nil
+			}
+			// Check for Microseconds field (older pgtype)
+			if microField := rv.FieldByName("Microseconds"); microField.IsValid() {
+				if validField := rv.FieldByName("Valid"); validField.IsValid() && validField.Bool() {
+					// Convert microseconds since 2000-01-01 to time
+					micro := microField.Int()
+					epoch := time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC)
+					t := epoch.Add(time.Duration(micro) * time.Microsecond)
+					return t.Format(time.RFC3339)
+				}
+				return nil
+			}
+		}
+		return v
+	}
 }

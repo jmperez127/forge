@@ -41,7 +41,9 @@ export default function App() {
     return false // Will be set to true on new user registration
   })
 
-  function handleLogin(newToken: string, isNewUser: boolean) {
+  function handleLogin(newToken: string, refreshToken: string, isNewUser: boolean) {
+    localStorage.setItem('endeavor_token', newToken)
+    localStorage.setItem('endeavor_refresh_token', refreshToken)
     setToken(newToken)
     // Show onboarding for new users who haven't seen it
     if (isNewUser && !localStorage.getItem('endeavor_onboarding_complete')) {
@@ -56,6 +58,7 @@ export default function App() {
 
   function handleLogout() {
     localStorage.removeItem('endeavor_token')
+    localStorage.removeItem('endeavor_refresh_token')
     setToken(null)
   }
 
