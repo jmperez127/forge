@@ -623,49 +623,32 @@ func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	database := s.getAuthenticatedDB(r)
 
-	// Execute action based on name
-	switch actionName {
-	case "create_ticket":
-		// Auto-populate author_id from authenticated user
-		userID := getUserID(r)
-		if userID != "" {
-			input["author_id"] = userID
+	// Auto-populate owner_id/author_id from authenticated user for create actions
+	userID := getUserID(r)
+	if userID != "" && action.Operation == "create" {
+		// Set common user ID fields if not already provided
+		for _, fieldName := range []string{"owner_id", "author_id", "user_id", "created_by"} {
+			if _, exists := entity.Fields[fieldName]; exists {
+				if _, provided := input[fieldName]; !provided {
+					input[fieldName] = userID
+				}
+			}
 		}
-		// For now, use a default org and tag if not provided (TODO: proper org resolution)
-		if _, ok := input["org_id"]; !ok {
-			input["org_id"] = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" // Default test org
-		}
-		if _, ok := input["tags_id"]; !ok {
-			input["tags_id"] = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb" // Default test tag
-		}
-		if _, ok := input["assignee_id"]; !ok {
-			input["assignee_id"] = userID // Self-assign by default
-		}
+	}
+
+	// Execute action based on operation type from action schema
+	switch action.Operation {
+	case "create":
 		s.executeCreateAction(ctx, w, database, entity, input)
-	case "close_ticket":
-		s.executeUpdateAction(ctx, w, database, entity, input, map[string]interface{}{"status": "closed"})
-	case "reopen_ticket":
-		s.executeUpdateAction(ctx, w, database, entity, input, map[string]interface{}{"status": "open"})
-	case "assign_ticket":
-		if assignee, ok := input["assignee_id"]; ok {
-			s.executeUpdateAction(ctx, w, database, entity, input, map[string]interface{}{"assignee_id": assignee})
-		} else {
-			s.respondError(w, http.StatusBadRequest, Message{
-				Code:    "MISSING_FIELD",
-				Message: "assignee_id is required",
-			})
-		}
-	case "escalate_ticket":
-		s.executeUpdateAction(ctx, w, database, entity, input, map[string]interface{}{"priority": "urgent"})
-	case "add_comment":
-		// Auto-populate author_id from authenticated user
-		userID := getUserID(r)
-		if userID != "" {
-			input["author_id"] = userID
-		}
-		s.executeCreateAction(ctx, w, database, entity, input)
+
+	case "update":
+		s.executeUpdateAction(ctx, w, database, entity, input, input)
+
+	case "delete":
+		s.executeDeleteAction(ctx, w, database, entity, input)
+
 	default:
-		// Generic action - just acknowledge
+		// No operation type specified - log and acknowledge
 		s.logger.Info("action.completed", "action", actionName)
 		s.respond(w, http.StatusOK, map[string]string{
 			"message": fmt.Sprintf("action %s executed", actionName),
@@ -854,13 +837,9 @@ func (s *Server) executeUpdateAction(ctx context.Context, w http.ResponseWriter,
 	// Get ID from input
 	id, ok := input["id"]
 	if !ok {
-		// Try ticket_id for actions like close_ticket
-		id, ok = input["ticket_id"]
-	}
-	if !ok {
 		s.respondError(w, http.StatusBadRequest, Message{
 			Code:    "MISSING_ID",
-			Message: "id or ticket_id is required",
+			Message: "id is required",
 		})
 		return
 	}
@@ -931,6 +910,58 @@ func (s *Server) executeUpdateAction(ctx context.Context, w http.ResponseWriter,
 	s.broadcastEntityChange(entity.Name, "update", record)
 
 	s.respond(w, http.StatusOK, record)
+}
+
+func (s *Server) executeDeleteAction(ctx context.Context, w http.ResponseWriter, database db.Database, entity *EntitySchema, input map[string]interface{}) {
+	// Get ID from input
+	id, ok := input["id"]
+	if !ok {
+		s.respondError(w, http.StatusBadRequest, Message{
+			Code:    "MISSING_ID",
+			Message: "id is required",
+		})
+		return
+	}
+
+	// Validate UUID
+	idStr := fmt.Sprintf("%v", id)
+	if _, err := uuid.Parse(idStr); err != nil {
+		s.respondError(w, http.StatusBadRequest, Message{
+			Code:    "INVALID_ID",
+			Message: "Invalid UUID format",
+		})
+		return
+	}
+
+	// Build DELETE query
+	query := fmt.Sprintf("DELETE FROM %s WHERE id = $1 RETURNING id", entity.Table)
+
+	rows, err := database.Query(ctx, query, idStr)
+	if err != nil {
+		s.logger.Error("delete failed", "error", err, "entity", entity.Name, "id", idStr)
+		s.respondError(w, http.StatusInternalServerError, Message{
+			Code:    "DELETE_FAILED",
+			Message: "Failed to delete record",
+		})
+		return
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		s.respondError(w, http.StatusNotFound, Message{
+			Code:    "NOT_FOUND",
+			Message: "Record not found",
+		})
+		return
+	}
+
+	// Broadcast deletion
+	s.broadcastEntityChange(entity.Name, "delete", map[string]interface{}{"id": idStr})
+
+	s.respond(w, http.StatusOK, map[string]interface{}{
+		"deleted": true,
+		"id":      idStr,
+	})
 }
 
 // handleWebhook handles incoming webhook requests from external services.

@@ -100,9 +100,11 @@ type RelSchema struct {
 
 // ActionSchema represents an action.
 type ActionSchema struct {
-	Name        string   `json:"name"`
-	InputEntity string   `json:"input_entity"`
-	Rules       []string `json:"rules"`
+	Name         string   `json:"name"`
+	InputEntity  string   `json:"input_entity"`
+	Operation    string   `json:"operation,omitempty"`     // "create", "update", "delete"
+	TargetEntity string   `json:"target_entity,omitempty"` // entity being created/updated/deleted
+	Rules        []string `json:"rules"`
 }
 
 // RuleSchema represents a rule.

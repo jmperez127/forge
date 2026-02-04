@@ -28,12 +28,22 @@ concurrency = 10
 # Authentication Configuration
 # =============================================================================
 [auth]
-provider = "jwt"
+provider = "password"
+
+[auth.password]
+algorithm = "bcrypt"
+bcrypt_cost = 12
+user_entity = "User"
+email_field = "email"
+password_field = "password_hash"
+registration_fields = ["display_name"]
+min_length = 8
 
 [auth.jwt]
 secret = "env:JWT_SECRET"
 issuer = "endeavor"
 expiry_hours = 24
+refresh_expiry_hours = 168
 
 # =============================================================================
 # Environment-Specific Overrides

@@ -194,6 +194,51 @@ When a bug is reported, follow this process:
 
 ---
 
+## Creating New FORGE Projects
+
+When creating a new FORGE application:
+
+1. **Always use authentication.** New projects should use `auth: password` (or `auth: jwt` for API-only apps). Never use `auth: none` unless explicitly requested.
+
+```text
+app MyApp {
+  auth: password
+  database: postgres
+}
+```
+
+2. **Actions must specify their operation type.** Every action needs `creates:`, `updates:`, or `deletes:` to tell the runtime what database operation to perform:
+
+```text
+action create_item {
+  input: Item
+  creates: Item    # Required - tells runtime to INSERT
+}
+
+action update_item {
+  input: Item
+  updates: Item    # Required - tells runtime to UPDATE
+}
+
+action delete_item {
+  input: Item
+  deletes: Item    # Required - tells runtime to DELETE
+}
+```
+
+3. **User ownership fields are auto-populated.** For create actions, the runtime automatically sets `owner_id`, `author_id`, `user_id`, or `created_by` fields from the authenticated user if they exist on the entity.
+
+4. **Define access control.** Every entity should have access rules:
+
+```text
+access Item {
+  read: user == owner
+  write: user == owner
+}
+```
+
+---
+
 ## App Development Rules
 
 When implementing applications using FORGE (in `projects/` folder):
@@ -620,9 +665,20 @@ access Ticket {
   write: user == author or user.role == agent
 }
 
-# Action
+# Action (must specify creates/updates/deletes)
+action create_ticket {
+  input: Ticket
+  creates: Ticket
+}
+
 action close_ticket {
   input: Ticket
+  updates: Ticket
+}
+
+action delete_ticket {
+  input: Ticket
+  deletes: Ticket
 }
 
 # Message

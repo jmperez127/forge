@@ -58,9 +58,11 @@ type NormalizedAccess struct {
 
 // NormalizedAction contains normalized action information.
 type NormalizedAction struct {
-	Name      string
-	InputType string
-	Hooks     []string // hook names to trigger
+	Name         string
+	InputType    string
+	Operation    string // "create", "update", "delete"
+	TargetEntity string // entity being created/updated/deleted
+	Hooks        []string // hook names to trigger
 }
 
 // NormalizedJob contains normalized job information.
@@ -379,9 +381,25 @@ func (n *Normalizer) normalizeActions(out *Output) {
 		}
 
 		for _, prop := range action.Properties {
-			if prop.Key.Name == "input" {
+			switch prop.Key.Name {
+			case "input":
 				if ident, ok := prop.Value.(*ast.Ident); ok {
 					na.InputType = ident.Name
+				}
+			case "creates":
+				if ident, ok := prop.Value.(*ast.Ident); ok {
+					na.Operation = "create"
+					na.TargetEntity = ident.Name
+				}
+			case "updates":
+				if ident, ok := prop.Value.(*ast.Ident); ok {
+					na.Operation = "update"
+					na.TargetEntity = ident.Name
+				}
+			case "deletes":
+				if ident, ok := prop.Value.(*ast.Ident); ok {
+					na.Operation = "delete"
+					na.TargetEntity = ident.Name
 				}
 			}
 		}

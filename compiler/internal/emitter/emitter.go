@@ -62,10 +62,12 @@ type RelSchema struct {
 
 // ActionSchema represents an action in the artifact.
 type ActionSchema struct {
-	Name        string   `json:"name"`
-	InputEntity string   `json:"input_entity"`
-	Rules       []string `json:"rules"`
-	Hooks       []string `json:"hooks"`
+	Name         string   `json:"name"`
+	InputEntity  string   `json:"input_entity"`
+	Operation    string   `json:"operation,omitempty"`    // "create", "update", "delete"
+	TargetEntity string   `json:"target_entity,omitempty"` // entity being created/updated/deleted
+	Rules        []string `json:"rules"`
+	Hooks        []string `json:"hooks"`
 }
 
 // RuleSchema represents a rule in the artifact.
@@ -247,8 +249,10 @@ func (e *Emitter) generateArtifact() *Artifact {
 	// Generate action schemas
 	for name, action := range e.plan.Actions {
 		as := &ActionSchema{
-			Name:        name,
-			InputEntity: action.InputEntity,
+			Name:         name,
+			InputEntity:  action.InputEntity,
+			Operation:    action.Operation,
+			TargetEntity: action.TargetEntity,
 		}
 
 		for _, rule := range action.Rules {

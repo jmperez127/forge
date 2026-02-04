@@ -17,6 +17,8 @@ import (
 type ActionNode struct {
 	Name         string
 	InputEntity  string
+	Operation    string // "create", "update", "delete"
+	TargetEntity string // entity being created/updated/deleted
 	Rules        []*RuleNode
 	PreHooks     []*HookNode
 	PostHooks    []*HookNode
@@ -200,8 +202,10 @@ func (p *Planner) Plan() (*Plan, *diag.Diagnostics) {
 func (p *Planner) planActions(plan *Plan) {
 	for _, action := range p.normalized.Actions {
 		node := &ActionNode{
-			Name:        action.Name,
-			InputEntity: action.InputType,
+			Name:         action.Name,
+			InputEntity:  action.InputType,
+			Operation:    action.Operation,
+			TargetEntity: action.TargetEntity,
 		}
 
 		// Find rules that apply to this action's entity

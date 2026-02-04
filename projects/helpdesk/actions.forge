@@ -3,24 +3,30 @@
 
 action create_ticket {
   input: Ticket
+  creates: Ticket
 }
 
 action close_ticket {
   input: Ticket
+  updates: Ticket
 }
 
 action reopen_ticket {
   input: Ticket
+  updates: Ticket
 }
 
 action assign_ticket {
   input: Ticket
+  updates: Ticket
 }
 
 action add_comment {
   input: Comment
+  creates: Comment
 }
 
 action escalate_ticket {
   input: Ticket
+  updates: Ticket
 }

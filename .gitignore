@@ -1,6 +1,7 @@
 # Go workspace (local only)
 go.work
 go.work.sum
+projects/endeavor/ebook/
 
 # Binaries
 /bin/
