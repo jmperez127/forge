@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -225,7 +226,7 @@ func TestHTTPProvider_Execute_GET(t *testing.T) {
 	p := &HTTPProvider{}
 	p.Init(map[string]string{})
 
-	ctx := t.Context()
+	ctx := context.Background()
 	err := p.Execute(ctx, "http.get", map[string]any{
 		"url": server.URL,
 	})
@@ -256,7 +257,7 @@ func TestHTTPProvider_Execute_POST(t *testing.T) {
 	p := &HTTPProvider{}
 	p.Init(map[string]string{})
 
-	ctx := t.Context()
+	ctx := context.Background()
 	err := p.Execute(ctx, "http.post", map[string]any{
 		"url":  server.URL,
 		"body": map[string]string{"key": "test"},
@@ -277,7 +278,7 @@ func TestHTTPProvider_Execute_Error(t *testing.T) {
 	p := &HTTPProvider{}
 	p.Init(map[string]string{})
 
-	ctx := t.Context()
+	ctx := context.Background()
 	err := p.Execute(ctx, "http.get", map[string]any{
 		"url": server.URL,
 	})
@@ -294,7 +295,7 @@ func TestHTTPProvider_Execute_MissingURL(t *testing.T) {
 	p := &HTTPProvider{}
 	p.Init(map[string]string{})
 
-	ctx := t.Context()
+	ctx := context.Background()
 	err := p.Execute(ctx, "http.get", map[string]any{})
 
 	if err == nil {
@@ -309,7 +310,7 @@ func TestHTTPProvider_Execute_UnknownCapability(t *testing.T) {
 	p := &HTTPProvider{}
 	p.Init(map[string]string{})
 
-	ctx := t.Context()
+	ctx := context.Background()
 	err := p.Execute(ctx, "http.unknown", map[string]any{
 		"url": "http://example.com",
 	})
