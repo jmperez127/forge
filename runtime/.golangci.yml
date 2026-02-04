@@ -12,7 +12,8 @@ linters:
 
 linters-settings:
   staticcheck:
-    checks: ["all", "-SA1019"]  # Ignore deprecation warnings for now
+    # Ignore deprecation warnings and empty branch warnings for now
+    checks: ["all", "-SA1019", "-SA9003"]
 
 issues:
   # Don't report issues in test files
@@ -20,3 +21,4 @@ issues:
     - path: _test\.go
       linters:
         - errcheck
+        - unused

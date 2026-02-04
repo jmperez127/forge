@@ -53,7 +53,16 @@ type mockRow struct {
 	values []any
 }
 
-func (m *mockRow) Scan(dest ...any) error { return nil }
+func (m *mockRow) Scan(dest ...any) error {
+	for i, v := range m.values {
+		if i < len(dest) {
+			if ptr, ok := dest[i].(*any); ok {
+				*ptr = v
+			}
+		}
+	}
+	return nil
+}
 
 // mockResult implements db.Result for testing
 type mockResult struct {
