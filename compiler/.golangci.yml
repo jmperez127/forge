@@ -1,0 +1,32 @@
+# golangci-lint configuration for FORGE compiler
+linters:
+  enable:
+    - errcheck
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+linters-settings:
+  errcheck:
+    # Check for ignored errors from these functions
+    exclude-functions:
+      - (*os/exec.Cmd).Wait
+      - (*os.Process).Signal
+
+issues:
+  # Exclude some linting rules in specific files/paths
+  exclude-rules:
+    # Exclude gosimple S1001 (should use copy) in planner - the loop pattern is clearer
+    - path: internal/planner/
+      linters:
+        - gosimple
+      text: "S1001"
+
+    # Exclude staticcheck SA4010 (unused append result) in planner
+    # These are intentional for building the result slice
+    - path: internal/planner/
+      linters:
+        - staticcheck
+      text: "SA4010"

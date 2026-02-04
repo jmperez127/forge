@@ -100,7 +100,7 @@ func cmdInit(args []string) {
   database: postgres
   frontend: web
 }
-`, strings.Title(name))
+`, toPascalCase(name))
 
 	if err := os.WriteFile(filepath.Join(dir, "app.forge"), []byte(appForge), 0644); err != nil {
 		fatal("failed to create app.forge: %v", err)
@@ -463,6 +463,14 @@ func printDiagnostics(diags *diag.Diagnostics) {
 	for _, d := range diags.Warnings() {
 		fmt.Fprintf(os.Stderr, "warning: %s\n", d.String())
 	}
+}
+
+// toPascalCase converts a name to PascalCase (first letter uppercase)
+func toPascalCase(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 func fatal(format string, args ...interface{}) {

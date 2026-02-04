@@ -82,7 +82,7 @@ func cmdDev(args []string) {
 
 		// Wait for process in background
 		go func() {
-			runtimeCmd.Wait()
+			_ = runtimeCmd.Wait()
 			runtimeMu.Lock()
 			runtimeRunning = false
 			runtimeMu.Unlock()
@@ -94,7 +94,7 @@ func cmdDev(args []string) {
 		defer runtimeMu.Unlock()
 
 		if runtimeCmd != nil && runtimeCmd.Process != nil {
-			runtimeCmd.Process.Signal(syscall.SIGTERM)
+			_ = runtimeCmd.Process.Signal(syscall.SIGTERM)
 			// Give it a moment to shut down gracefully
 			time.Sleep(100 * time.Millisecond)
 		}

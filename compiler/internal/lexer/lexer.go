@@ -93,13 +93,6 @@ func (l *Lexer) skipWhitespace() {
 	}
 }
 
-// skipWhitespaceAndNewlines skips all whitespace including newlines.
-func (l *Lexer) skipWhitespaceAndNewlines() {
-	for l.ch == ' ' || l.ch == '\t' || l.ch == '\r' || l.ch == '\n' {
-		l.readChar()
-	}
-}
-
 // NextToken returns the next token from the input.
 func (l *Lexer) NextToken() token.Token {
 	l.skipWhitespace()

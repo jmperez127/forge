@@ -199,12 +199,18 @@ Examples:
 	}
 	fs.Parse(args)
 
-	files := fs.Args()
-	if len(files) == 0 {
-		var err error
+	paths := fs.Args()
+	var files []string
+	var err error
+	if len(paths) == 0 {
 		files, err = findForgeFiles(".")
 		if err != nil {
 			fatal("failed to find .forge files: %v", err)
+		}
+	} else {
+		files, err = resolveForgeFiles(paths)
+		if err != nil {
+			fatal("%v", err)
 		}
 	}
 
@@ -248,12 +254,18 @@ Examples:
 	}
 	fs.Parse(args)
 
-	files := fs.Args()
-	if len(files) == 0 {
-		var err error
+	paths := fs.Args()
+	var files []string
+	var err error
+	if len(paths) == 0 {
 		files, err = findForgeFiles(".")
 		if err != nil {
 			fatal("failed to find .forge files: %v", err)
+		}
+	} else {
+		files, err = resolveForgeFiles(paths)
+		if err != nil {
+			fatal("%v", err)
 		}
 	}
 
@@ -649,6 +661,31 @@ func findForgeFiles(dir string) ([]string, error) {
 		return nil
 	})
 	return files, err
+}
+
+// resolveForgeFiles takes a list of paths (files or directories) and returns
+// all .forge files. If a path is a directory, it finds all .forge files in it.
+// If a path is a .forge file, it's included directly.
+func resolveForgeFiles(paths []string) ([]string, error) {
+	var files []string
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to access %s: %w", path, err)
+		}
+		if info.IsDir() {
+			dirFiles, err := findForgeFiles(path)
+			if err != nil {
+				return nil, fmt.Errorf("failed to find .forge files in %s: %w", path, err)
+			}
+			files = append(files, dirFiles...)
+		} else if strings.HasSuffix(path, ".forge") {
+			files = append(files, path)
+		} else {
+			return nil, fmt.Errorf("%s is not a .forge file", path)
+		}
+	}
+	return files, nil
 }
 
 // build compiles files and writes output, returns true on success

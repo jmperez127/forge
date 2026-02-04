@@ -68,19 +68,23 @@ jobs:
             go build -ldflags "$LDFLAGS" -o ../forge ./cmd/forge
           fi
 
-      - name: Package
+      - name: Package (Unix)
+        if: matrix.os != 'windows'
         shell: bash
         run: |
           VERSION=${{ steps.version.outputs.VERSION }}
           ARCHIVE_NAME="forge-${VERSION}-${{ matrix.os }}-${{ matrix.arch }}"
-
           mkdir -p dist
+          tar -czvf "dist/${ARCHIVE_NAME}.tar.gz" forge
 
-          if [ "${{ matrix.os }}" = "windows" ]; then
-            zip -j "dist/${ARCHIVE_NAME}.zip" forge.exe
-          else
-            tar -czvf "dist/${ARCHIVE_NAME}.tar.gz" forge
-          fi
+      - name: Package (Windows)
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          $VERSION = "${{ steps.version.outputs.VERSION }}"
+          $ARCHIVE_NAME = "forge-${VERSION}-windows-${{ matrix.arch }}"
+          New-Item -ItemType Directory -Force -Path dist
+          Compress-Archive -Path forge.exe -DestinationPath "dist/${ARCHIVE_NAME}.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
