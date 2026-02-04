@@ -25,6 +25,66 @@ FORGE is what Rails would look like if invented AFTER we understood distributed 
 
 ---
 
+## Installation
+
+### Quick Install (macOS/Linux)
+```bash
+curl -fsSL https://raw.githubusercontent.com/forge-lang/forge/main/install.sh | bash
+```
+
+### Manual Install
+Download from [GitHub Releases](https://github.com/forge-lang/forge/releases):
+```bash
+# macOS (Apple Silicon)
+curl -L https://github.com/forge-lang/forge/releases/latest/download/forge-darwin-arm64.tar.gz | tar xz
+sudo mv forge /usr/local/bin/
+
+# macOS (Intel)
+curl -L https://github.com/forge-lang/forge/releases/latest/download/forge-darwin-amd64.tar.gz | tar xz
+sudo mv forge /usr/local/bin/
+
+# Linux (x64)
+curl -L https://github.com/forge-lang/forge/releases/latest/download/forge-linux-amd64.tar.gz | tar xz
+sudo mv forge /usr/local/bin/
+```
+
+### From Source
+```bash
+git clone https://github.com/forge-lang/forge.git
+cd forge/runtime
+go build -o /usr/local/bin/forge ./cmd/forge
+```
+
+### Verify Installation
+```bash
+forge version
+```
+
+---
+
+## Releasing FORGE
+
+To create a new release:
+
+```bash
+# 1. Update version in CHANGELOG.md
+# 2. Commit changes
+git add -A && git commit -m "Release v0.2.0"
+
+# 3. Tag the release
+git tag v0.2.0
+
+# 4. Push (triggers GitHub Actions)
+git push origin main --tags
+```
+
+GitHub Actions will automatically:
+- Build binaries for linux/darwin (amd64/arm64) and windows
+- Create GitHub Release with download links
+- Generate checksums
+
+---
+
 ## Critical Files
 
 | File | Purpose |
@@ -356,46 +416,85 @@ client.subscribe('TicketList', {
 
 ---
 
-## Common Commands
+## FORGE CLI Reference
 
-### Build & Run
-```bash
-# Build the forge CLI (from repository root)
-cd runtime && go build -o ../bin/forge ./cmd/forge
+The `forge` CLI is the single binary for all FORGE operations. Location: `./bin/forge`
 
-# Verify it works
-./bin/forge version
-./bin/forge help
+```
+forge <command> [options]
+
+Commands:
+  init [name]    Create a new FORGE project
+  check          Validate .forge files
+  build          Compile .forge files to runtime artifact
+  run            Start the runtime server
+  dev            Build, run, and watch for changes
+  migrate        Show or apply database migrations
+  version        Print version information
+  help           Show help
 ```
 
-### CLI Commands
+### forge init
 ```bash
-# Create a new project
-forge init myapp
-cd myapp
+forge init myapp              # Create new project in ./myapp/
+forge init                    # Create in current directory
+```
 
-# Validate .forge files (parse + analyze, no code generation)
-forge check
+### forge check
+```bash
+forge check                   # Validate all .forge files
+```
 
-# Compile to runtime artifact + schema + SDK
-forge build                    # outputs to .forge-runtime/
-forge build -o dist            # custom output directory
+### forge build
+```bash
+forge build                   # Output to .forge-runtime/
+forge build -o dist           # Custom output directory
+forge build app.forge         # Build specific files
+```
 
-# Start the runtime server
-forge run                      # default port 8080
-forge run -port 3000           # custom port
-forge run -db "postgres://..." # override database URL
+**Output:**
+- `.forge-runtime/artifact.json` - Runtime specification
+- `.forge-runtime/schema.sql` - Database DDL
+- `.forge-runtime/sdk/client.ts` - TypeScript client
+- `.forge-runtime/sdk/react.tsx` - React hooks
 
-# Development mode (build + run + watch for changes)
-forge dev                      # hot reload on file changes
-forge dev -port 3000
+### forge run
+```bash
+forge run                     # Start on port 8080
+forge run -port 3000          # Custom port
+forge run -db "postgres://..."  # Override database URL
+```
 
-# Show/apply migrations
-forge migrate                    # show pending migrations
-forge migrate -apply             # apply migrations to database
-forge migrate -apply -dry-run    # show what would be applied
-forge migrate -apply -verbose    # apply with detailed output
-forge migrate -database "url"    # override database URL
+**Environment Variables:**
+- `FORGE_ENV=production` - Disables /_dev endpoints
+- `DATABASE_URL` - Database connection string
+- `JWT_SECRET` - Token signing key
+
+### forge dev
+```bash
+forge dev                     # Build + run + watch
+forge dev -port 3000          # Custom port
+```
+
+Hot reloads on any `.forge` file change.
+
+### forge migrate
+```bash
+forge migrate                 # Show pending migrations
+forge migrate -apply          # Apply migrations
+forge migrate -apply -dry-run # Preview without applying
+forge migrate -apply -verbose # Detailed output
+forge migrate -database "url" # Override database URL
+```
+
+---
+
+## Common Commands
+
+### Build the forge CLI (one-time)
+```bash
+cd runtime && go build -o ../bin/forge ./cmd/forge
+./bin/forge version           # Verify: "forge version 0.1.0"
 ```
 
 ### Build Helpdesk Example
@@ -520,6 +619,116 @@ cd e2e && npx playwright test --debug
 | 2024-01-01 | chi for HTTP routing | Idiomatic Go, net/http compatible |
 | 2024-01-01 | gorilla/websocket for realtime | Battle-tested, hub pattern |
 | 2024-01-01 | Compile-time plugins | Maintains sealed runtime guarantee, single binary |
+
+---
+
+## Deployment
+
+FORGE apps deploy as a single Go binary + static frontend.
+
+### What You Deploy
+
+```
+myapp/
+├── forge                      # Single binary (17MB, no deps)
+├── .forge-runtime/
+│   └── artifact.json          # Compiled app spec
+├── forge.runtime.toml         # Configuration
+└── web/dist/                  # Built React frontend
+```
+
+### Deployment Steps
+
+```bash
+# 1. Build the app
+cd projects/myapp
+forge build                    # Creates .forge-runtime/
+cd web && npm run build        # Creates dist/
+
+# 2. Copy to server
+scp -r . user@server:/opt/myapp/
+scp /path/to/bin/forge user@server:/opt/myapp/
+
+# 3. On the server - set environment
+export FORGE_ENV=production
+export DATABASE_URL="postgres://user:pass@localhost/myapp"
+export JWT_SECRET="$(openssl rand -hex 32)"
+
+# 4. Apply migrations and run
+cd /opt/myapp
+./forge migrate -apply
+./forge run -port 8080
+```
+
+### Production Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `FORGE_ENV` | Yes | Set to `production` |
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `JWT_SECRET` | Yes | 32+ byte secret for tokens |
+| `PORT` | No | Server port (default: 8080) |
+| `REDIS_URL` | No | For background jobs |
+
+### Nginx Configuration
+
+```nginx
+server {
+  listen 443 ssl;
+  server_name myapp.example.com;
+
+  # Frontend (static files)
+  location / {
+    root /opt/myapp/web/dist;
+    try_files $uri /index.html;
+  }
+
+  # API backend
+  location /api/ {
+    proxy_pass http://localhost:8080;
+  }
+
+  # Auth endpoints
+  location /auth/ {
+    proxy_pass http://localhost:8080;
+  }
+
+  # WebSocket
+  location /ws {
+    proxy_pass http://localhost:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+  }
+}
+```
+
+### Systemd Service
+
+```ini
+# /etc/systemd/system/myapp.service
+[Unit]
+Description=MyApp FORGE Server
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=myapp
+WorkingDirectory=/opt/myapp
+Environment=FORGE_ENV=production
+Environment=DATABASE_URL=postgres://...
+Environment=JWT_SECRET=...
+ExecStart=/opt/myapp/forge run -port 8080
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl enable myapp
+sudo systemctl start myapp
+```
 
 ---
 

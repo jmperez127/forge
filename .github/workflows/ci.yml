@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Test Compiler
+        run: |
+          cd compiler
+          go test ./... -v
+
+      - name: Test Runtime
+        run: |
+          cd runtime
+          go test ./internal/... -v
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build CLI
+        run: |
+          cd runtime
+          go build -o ../bin/forge ./cmd/forge
+
+      - name: Verify CLI
+        run: ./bin/forge version
+
+      - name: Build example projects
+        run: |
+          ./bin/forge check projects/helpdesk
+          ./bin/forge build projects/helpdesk
+
+          ./bin/forge check projects/endeavor
+          ./bin/forge build projects/endeavor
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Run golangci-lint (compiler)
+        uses: golangci/golangci-lint-action@v4
+        with:
+          working-directory: compiler
+          args: --timeout=5m
+
+      - name: Run golangci-lint (runtime)
+        uses: golangci/golangci-lint-action@v4
+        with:
+          working-directory: runtime
+          args: --timeout=5m

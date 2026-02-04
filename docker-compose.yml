@@ -1,0 +1,72 @@
+# FORGE Development Stack
+# Usage: docker-compose up -d
+#
+# For a specific project:
+#   PROJECT_DIR=projects/endeavor docker-compose up -d
+
+version: '3.8'
+
+services:
+  # PostgreSQL database
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: forge
+      POSTGRES_PASSWORD: forge
+      POSTGRES_DB: forge
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U forge"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis for background jobs (optional)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # FORGE runtime server
+  forge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PROJECT_DIR: ${PROJECT_DIR:-projects/endeavor}
+    ports:
+      - "8080:8080"
+    environment:
+      FORGE_ENV: production
+      DATABASE_URL: postgres://forge:forge@postgres:5432/forge?sslmode=disable
+      JWT_SECRET: dev-secret-change-in-production-minimum-32-bytes
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Run migrations then start server
+    command: >
+      sh -c "forge migrate -apply -database 'postgres://forge:forge@postgres:5432/forge?sslmode=disable' && forge run"
+
+  # Nginx reverse proxy (serves frontend + proxies API)
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - forge
+
+volumes:
+  postgres_data:

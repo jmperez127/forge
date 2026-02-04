@@ -16,7 +16,12 @@ import (
 	runtimeforge "github.com/forge-lang/forge/runtime/forge"
 )
 
-const version = "0.1.0"
+// Version info - injected at build time via ldflags
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
 
 func main() {
 	if len(os.Args) < 2 {
@@ -71,6 +76,12 @@ Run 'forge <command> --help' for more information on a command.
 // cmdVersion prints version info
 func cmdVersion() {
 	fmt.Printf("forge version %s\n", version)
+	if commit != "none" {
+		fmt.Printf("  commit: %s\n", commit)
+	}
+	if date != "unknown" {
+		fmt.Printf("  built:  %s\n", date)
+	}
 }
 
 // cmdInit creates a new FORGE project
