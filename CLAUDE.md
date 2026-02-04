@@ -243,16 +243,24 @@ access Item {
 
 When implementing applications using FORGE (in `projects/` folder):
 
-1. **DO NOT modify the FORGE runtime or compiler** to accommodate app-specific needs. The runtime must remain generic.
+1. **NEVER edit the FORGE compiler or runtime.** When working on a FORGE app, you must not modify any code in `compiler/` or `runtime/`. These are separate concerns.
 
-2. **If you hit a limitation**, ask the user for directions before making changes to FORGE. We need to discuss whether:
-   - The limitation should be addressed in FORGE (making it generic for all apps)
-   - There's a workaround within the existing constructs
-   - The app design should be adjusted
+2. **If you hit a limitation or missing language construct:**
+   - **STOP** trying to work around it by editing FORGE
+   - **NOTIFY** the user: "I'm stuck - FORGE doesn't support [X]. This needs a language/runtime change."
+   - **CONTINUE** implementing the rest of the app using existing constructs
+   - The developer will address the FORGE limitation separately
 
 3. **App-specific code belongs in the app**, not in the runtime. Things like typing indicators, presence, and custom UI logic should be implemented in the app's frontend code using the generic primitives FORGE provides.
 
 4. **The SDK (client.ts, react.tsx) in each app** can have app-specific extensions, but changes that would benefit all apps should be discussed first.
+
+Example of what to do when stuck:
+```
+❌ Wrong: "Let me modify runtime/internal/server/handlers.go to add support for X..."
+✅ Right: "FORGE doesn't currently support X. I'll continue with the rest of the app,
+          but you'll need to add this construct to FORGE separately."
+```
 
 ---
 
