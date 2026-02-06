@@ -423,7 +423,7 @@ View definitions with source entities, fields, and generated SQL:
 
 ### Jobs Page (`/_dev/jobs`)
 
-Background jobs and their trigger hooks:
+Background jobs, hooks, executor status, and provider info:
 
 ```json
 {
@@ -449,7 +449,17 @@ Background jobs and their trigger hooks:
       "operation": "update",
       "jobs": ["notify_author", "notify_assignee"]
     }
-  ]
+  ],
+  "executor": {
+    "status": "running",
+    "workers": 10,
+    "queue_capacity": 1000,
+    "queue_length": 0
+  },
+  "providers": {
+    "registered": ["email", "generic"],
+    "capabilities": ["email.send", "http.call", "http.delete", "http.get", "http.post", "http.put"]
+  }
 }
 ```
 

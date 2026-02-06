@@ -847,40 +847,99 @@ User calls: POST /api/actions/close_ticket { id: "ticket-123" }
 
 ## Background Jobs
 
-Jobs run after the transaction commits.
+Jobs run after the transaction commits. They are fire-and-forget: the HTTP response is sent before jobs execute.
+
+### How It Works
+
+1. Action commits successfully (create/update/delete)
+2. Hook evaluation matches entity + operation + timing (`after` only)
+3. Matching jobs are enqueued to the in-process worker pool
+4. Workers execute job capabilities through the provider registry
+5. Results are logged; failures retry with quadratic backoff
 
 ### Job Queue
 
-Jobs are queued to Redis via Asynq:
+Jobs currently use an **in-process channel-based queue** (Phase 1). No external dependencies required.
 
-```bash
-REDIS_URL="redis://localhost:6379"
+```toml
+# forge.runtime.toml
+[jobs]
+concurrency = 10   # Number of worker goroutines (default: 10)
 ```
 
-### Job Execution
+Future phases will add Redis-backed persistent queues:
 
-1. Hook triggers after entity operation
-2. Job is enqueued with entity data
-3. Worker picks up job
-4. `needs` data is pre-resolved (jobs have no query power)
-5. Job executes with declared capabilities only
+```toml
+# Phase 2+ (not yet implemented)
+[jobs]
+backend = "redis"
+url = "env:REDIS_URL"
+concurrency = 10
+```
+
+### Job Execution Flow
+
+```
+POST /api/actions/create_ticket → 200 OK (response sent immediately)
+                                      ↓
+                            Hook: Ticket.after_create
+                                      ↓
+                          Enqueue: notify_agents job
+                                      ↓
+                       Worker picks up from channel queue
+                                      ↓
+                    Provider registry resolves "email.send"
+                                      ↓
+                      Email provider executes capability
+                                      ↓
+                         Result logged (success/failure)
+```
 
 ### Job Capabilities
 
-| Capability | Description |
-|------------|-------------|
-| `email.send` | Send emails via configured provider |
-| `http.call` | Make HTTP requests to allowed domains |
-| `file.write` | Write files to allowed paths |
+Capabilities are provided by registered providers. Built-in providers:
+
+| Capability | Provider | Description |
+|------------|----------|-------------|
+| `email.send` | email | Send emails via SMTP |
+| `http.get` | generic | HTTP GET request |
+| `http.post` | generic | HTTP POST request |
+| `http.put` | generic | HTTP PUT request |
+| `http.delete` | generic | HTTP DELETE request |
+| `http.call` | generic | Generic HTTP request |
+
+### Provider Configuration
+
+Providers are configured in `forge.runtime.toml`:
+
+```toml
+[providers.email]
+host = "env:SMTP_HOST"
+port = "587"
+user = "env:SMTP_USER"
+password = "env:SMTP_PASS"
+from = "noreply@example.com"
+```
+
+### Retry Behavior
+
+Failed jobs retry automatically with quadratic backoff:
+
+| Attempt | Backoff Delay |
+|---------|--------------|
+| 1st retry | 1 second |
+| 2nd retry | 4 seconds |
+| 3rd retry | 9 seconds |
+
+Default maximum attempts: 3. After exhaustion, the job is logged as failed.
 
 ### Monitoring Jobs
 
-```bash
-# View job queue status (requires asynq CLI)
-asynq stats
+In development mode, check job status at `/_dev/jobs`:
 
-# View failed jobs
-asynq tasks list --queue=default --state=failed
+```bash
+# View jobs, hooks, executor status, and provider info
+curl http://localhost:8080/_dev/jobs | jq .
 ```
 
 ---
@@ -1081,8 +1140,9 @@ The runtime handles SIGTERM/SIGINT gracefully:
 
 1. Stop accepting new connections
 2. Wait for in-flight requests (30s timeout)
-3. Close database connections
-4. Exit
+3. Stop job executor (drain in-flight jobs)
+4. Close database connections
+5. Exit
 
 ```bash
 # Graceful shutdown

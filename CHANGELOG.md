@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Job execution pipeline (Phase 1 - synchronous in-process)
+  - Hook evaluation after entity mutations (create/update/delete)
+  - In-process job executor with configurable worker pool
+  - Provider registry initialization from `forge.runtime.toml`
+  - Fire-and-forget job execution through capability providers
+  - Retry with quadratic backoff (max 3 attempts by default)
+  - `/_dev/jobs` enhanced with executor status and provider info
+- Work journal system for tracking implementation progress
+
 ## [0.2.0] - 2025-02-03
 
 ### Added

@@ -13,6 +13,12 @@ When working on features:
 2. Update the journal when starting work (mark as in_progress + your role)
 3. Update the journal when completing work (mark as done + list files changed)
 4. When ALL tasks for a feature are done, move the entry to `completed_work.md`
+5. **Always update user-facing documentation** after any feature work:
+   - `CHANGELOG.md` — Add entry under `[Unreleased]`
+   - `docs/runtime-reference.md` — Update if runtime behavior changed
+   - `docs/language-reference.md` — Update if .forge syntax changed
+   - `docs/dev-info.md` — Update if /_dev endpoints changed
+   - `website/src/pages/docs/*.tsx` — Update the relevant page if user-visible features changed
 
 ## Roadmap
 
