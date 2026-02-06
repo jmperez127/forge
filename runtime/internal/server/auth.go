@@ -25,15 +25,17 @@ import (
 
 // RegisterRequest is the request body for POST /auth/register.
 type RegisterRequest struct {
-	Email    string                 `json:"email"`
-	Password string                 `json:"password"`
-	Data     map[string]interface{} `json:"data,omitempty"`
+	Email          string                 `json:"email"`
+	Password       string                 `json:"password"`
+	Data           map[string]interface{} `json:"data,omitempty"`
+	TurnstileToken string                 `json:"turnstile_token,omitempty"`
 }
 
 // LoginRequest is the request body for POST /auth/login.
 type LoginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
+	Email          string `json:"email"`
+	Password       string `json:"password"`
+	TurnstileToken string `json:"turnstile_token,omitempty"`
 }
 
 // RefreshRequest is the request body for POST /auth/refresh.
@@ -265,12 +267,36 @@ func isValidEmail(email string) bool {
 
 // HTTP handlers
 
+// handleAuthConfig returns public auth configuration for the frontend.
+func (s *Server) handleAuthConfig(w http.ResponseWriter, r *http.Request) {
+	cfg := map[string]interface{}{
+		"registration_mode":        s.runtimeConf.Security.Registration.Mode,
+		"login_requires_turnstile": s.runtimeConf.Security.Turnstile.LoginEnabled,
+	}
+	if s.runtimeConf.Security.Registration.Mode == "turnstile" || s.runtimeConf.Security.Turnstile.LoginEnabled {
+		cfg["turnstile_site_key"] = s.runtimeConf.Security.Turnstile.SiteKey
+	}
+	s.respond(w, http.StatusOK, cfg)
+}
+
 // handleRegister handles POST /auth/register.
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	var req RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.respondError(w, http.StatusBadRequest, Message{Code: "INVALID_REQUEST", Message: "Invalid JSON body"})
 		return
+	}
+
+	// Turnstile verification for registration
+	if s.runtimeConf.Security.Registration.Mode == "turnstile" {
+		if s.turnstile == nil {
+			s.respondError(w, http.StatusInternalServerError, Message{Code: "CONFIG_ERROR", Message: "Turnstile not configured"})
+			return
+		}
+		if err := s.turnstile.Verify(r.Context(), req.TurnstileToken, r.RemoteAddr); err != nil {
+			s.respondError(w, http.StatusForbidden, Message{Code: "TURNSTILE_FAILED", Message: "Bot verification failed"})
+			return
+		}
 	}
 
 	// Validate email
@@ -329,6 +355,14 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.respondError(w, http.StatusBadRequest, Message{Code: "INVALID_REQUEST", Message: "Invalid JSON body"})
 		return
+	}
+
+	// Turnstile verification for login (when configured)
+	if s.runtimeConf.Security.Turnstile.LoginEnabled && s.turnstile != nil {
+		if err := s.turnstile.Verify(r.Context(), req.TurnstileToken, r.RemoteAddr); err != nil {
+			s.respondError(w, http.StatusForbidden, Message{Code: "TURNSTILE_FAILED", Message: "Bot verification failed"})
+			return
+		}
 	}
 
 	// Validate input

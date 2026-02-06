@@ -43,6 +43,7 @@ type Server struct {
 	hub          *Hub
 	logger       *slog.Logger
 	watcher      *ArtifactWatcher
+	turnstile    *security.TurnstileVerifier
 }
 
 // Artifact represents the loaded runtime artifact.
@@ -272,6 +273,12 @@ func New(cfg *Config) (*Server, error) {
 		logger:      logger,
 	}
 
+	// Initialize Turnstile verifier if configured
+	if runtimeConf.Security.Turnstile.SecretKey != "" {
+		s.turnstile = security.NewTurnstileVerifier(runtimeConf.Security.Turnstile.SecretKey)
+		logger.Info("turnstile verification enabled")
+	}
+
 	s.setupRoutes()
 	s.setupDevRoutes()
 
@@ -331,6 +338,7 @@ func (s *Server) setupRoutes() {
 	// Auth routes (when password auth enabled)
 	if s.runtimeConf.Auth.Provider == "password" {
 		r.Route("/auth", func(r chi.Router) {
+			r.Get("/config", s.handleAuthConfig)
 			r.Post("/register", s.handleRegister)
 			r.Post("/login", s.handleLogin)
 			r.Post("/logout", s.handleLogout)
