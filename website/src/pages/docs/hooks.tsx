@@ -313,10 +313,78 @@ concurrency = 10   # Worker pool size (default: 10)`}
 # Returns: jobs, hooks, executor status, registered providers`}
       />
 
-      <h2 className="text-2xl font-bold mt-8 mb-4">Coming Soon</h2>
+      <h2 className="text-2xl font-bold mt-8 mb-4">Conditional Hooks</h2>
 
       <p className="text-muted-foreground mb-4">
-        These features are planned for future releases:
+        Run jobs only when specific conditions are met:
+      </p>
+
+      <CodeBlock
+        code={`hook Ticket.after_update {
+  # Only when status changes to closed
+  if status == closed and old.status != closed {
+    enqueue notify_customer
+    enqueue archive_attachments
+  }
+
+  # Only when priority escalates
+  if priority == high and old.priority != high {
+    enqueue alert_on_call_agent
+  }
+
+  # When reassigned
+  if assignee != old.assignee {
+    enqueue notify_new_assignee
+  }
+}`}
+      />
+
+      <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-6 mb-8">
+        <h4 className="font-semibold text-amber-400 mb-2">Not Yet Implemented</h4>
+        <p className="text-sm text-muted-foreground">
+          Conditional hooks are part of the FORGE spec but not yet implemented in the runtime.
+          Currently all hooks fire unconditionally on their entity + operation match.
+        </p>
+      </div>
+
+      <h2 className="text-2xl font-bold mt-8 mb-4">Scheduled Jobs</h2>
+
+      <p className="text-muted-foreground mb-4">
+        Jobs can also run on a schedule:
+      </p>
+
+      <CodeBlock
+        code={`job daily_digest {
+  schedule: "0 9 * * *"   # 9 AM daily (cron syntax)
+
+  needs: {
+    Organization.members where wants_digest == true,
+    Ticket where status == open and created_at > yesterday()
+  }
+
+  effect: email.send
+}
+
+job cleanup_expired_sessions {
+  schedule: "*/15 * * * *"   # Every 15 minutes
+
+  needs: Session where expires_at < now()
+
+  effect: delete
+}`}
+      />
+
+      <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-6 mb-8">
+        <h4 className="font-semibold text-amber-400 mb-2">Not Yet Implemented</h4>
+        <p className="text-sm text-muted-foreground">
+          Scheduled jobs are part of the FORGE spec but not yet implemented in the runtime.
+        </p>
+      </div>
+
+      <h2 className="text-2xl font-bold mt-8 mb-4">Roadmap</h2>
+
+      <p className="text-muted-foreground mb-4">
+        These features are on the implementation roadmap:
       </p>
 
       <div className="overflow-x-auto mb-8">
@@ -324,37 +392,28 @@ concurrency = 10   # Worker pool size (default: 10)`}
           <thead>
             <tr className="border-b border-border">
               <th className="text-left py-3 px-4 font-semibold">Feature</th>
+              <th className="text-left py-3 px-4 font-semibold">Phase</th>
               <th className="text-left py-3 px-4 font-semibold">Description</th>
             </tr>
           </thead>
           <tbody className="text-muted-foreground">
             <tr className="border-b border-border/50">
-              <td className="py-3 px-4 font-mono text-forge-400">Conditional hooks</td>
-              <td className="py-3 px-4">
-                <code className="text-forge-400">if status == closed {"{"} enqueue ... {"}"}</code> — run
-                jobs only when specific conditions are met
-              </td>
-            </tr>
-            <tr className="border-b border-border/50">
               <td className="py-3 px-4 font-mono text-forge-400">Needs resolution</td>
+              <td className="py-3 px-4">Phase 2</td>
               <td className="py-3 px-4">
                 Follow relation paths to fetch related records before job execution
               </td>
             </tr>
             <tr className="border-b border-border/50">
               <td className="py-3 px-4 font-mono text-forge-400">Capability sandboxing</td>
+              <td className="py-3 px-4">Phase 2</td>
               <td className="py-3 px-4">
                 Enforce that jobs can only use effects they declared
               </td>
             </tr>
-            <tr className="border-b border-border/50">
-              <td className="py-3 px-4 font-mono text-forge-400">Scheduled jobs</td>
-              <td className="py-3 px-4">
-                <code className="text-forge-400">schedule: "0 9 * * *"</code> — cron-based job execution
-              </td>
-            </tr>
             <tr>
               <td className="py-3 px-4 font-mono text-forge-400">Persistent queue</td>
+              <td className="py-3 px-4">Phase 3</td>
               <td className="py-3 px-4">
                 Redis-backed job queue for durability across restarts
               </td>
@@ -369,7 +428,7 @@ concurrency = 10   # Worker pool size (default: 10)`}
           Jobs currently execute in-process using a channel-based worker pool. The entity
           record data is passed directly to the job. This is reliable for most use cases
           but jobs are lost if the server restarts while they're queued. Persistent queues
-          are coming in a future release.
+          and needs resolution are coming in Phase 2 and 3.
         </p>
       </div>
     </DocsLayout>
