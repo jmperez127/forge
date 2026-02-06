@@ -27,7 +27,7 @@ When working on features:
 **Every task must have a ticket.** When ANY work is requested:
 1. **First** run `gh issue list --repo jmperez127/forge` to check for existing issues — avoid duplicates
 2. If no matching issue exists, create one with clear scope and acceptance criteria
-3. Add the issue to the FORGE v0.3.0 project board
+3. Add the issue to the FORGE project board
 4. Set status to "In Progress" when starting work
 5. Reference issue numbers in commit messages (e.g., `fixes #3`)
 6. Close issues with `--reason completed` when done, set board status to "Done"
