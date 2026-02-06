@@ -20,6 +20,25 @@ When working on features:
    - `docs/dev-info.md` — Update if /_dev endpoints changed
    - `website/src/pages/docs/*.tsx` — Update the relevant page if user-visible features changed
 
+## GitHub Project Board
+
+**All work is tracked on the GitHub project board:** https://github.com/users/jmperez127/projects/1
+
+When working on features:
+- Create GitHub issues for new work items with clear scope and acceptance criteria
+- Add issues to the FORGE v0.3.0 project board
+- Move issues through columns: Todo → In Progress → Done
+- Close issues with `--reason completed` when done
+- Reference issue numbers in commit messages (e.g., `fixes #3`)
+
+Use `gh` CLI for all board operations:
+```bash
+gh issue list --repo jmperez127/forge                          # List issues
+gh issue create --repo jmperez127/forge --title "..." --body "..."  # Create issue
+gh project item-add 1 --owner jmperez127 --url <issue-url>    # Add to board
+gh issue close <number> --repo jmperez127/forge --reason completed  # Close when done
+```
+
 ## Roadmap
 
 The v0.3.0 release roadmap lives in `docs/roadmap/`. Each document is a self-contained implementation plan:
