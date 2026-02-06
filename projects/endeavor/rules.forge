@@ -1,9 +1,0 @@
-rule Project.update {
-  forbid if archived == true
-    emit PROJECT_ARCHIVED
-}
-
-rule StateTransition.create {
-  forbid if from_state == to_state
-    emit SAME_STATE_TRANSITION
-}
