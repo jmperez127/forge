@@ -19,6 +19,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/forge-lang/forge/runtime/internal/config"
 	"github.com/forge-lang/forge/runtime/internal/db"
+	"github.com/forge-lang/forge/runtime/internal/security"
 )
 
 // Config holds server configuration.
@@ -283,6 +284,26 @@ func (s *Server) setupRoutes() {
 	// Middleware
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
+
+	// Security: rate limiting + bot filter
+	secEnabled := true
+	if s.runtimeConf.Security.Enabled != nil {
+		secEnabled = *s.runtimeConf.Security.Enabled
+	}
+	botEnabled := true
+	if s.runtimeConf.Security.BotFilter.Enabled != nil {
+		botEnabled = *s.runtimeConf.Security.BotFilter.Enabled
+	}
+	r.Use(security.NewMiddleware(&security.MiddlewareConfig{
+		Enabled:          secEnabled,
+		AuthWindow:       s.runtimeConf.Security.RateLimit.AuthWindow,
+		AuthBurst:        s.runtimeConf.Security.RateLimit.AuthBurst,
+		APIWindow:        s.runtimeConf.Security.RateLimit.APIWindow,
+		APIBurst:         s.runtimeConf.Security.RateLimit.APIBurst,
+		BotFilterEnabled: botEnabled,
+		Logger:           s.logger,
+	}))
+
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
