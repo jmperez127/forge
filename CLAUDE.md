@@ -24,12 +24,16 @@ When working on features:
 
 **All work is tracked on the GitHub project board:** https://github.com/users/jmperez127/projects/1
 
-When working on features:
-- Create GitHub issues for new work items with clear scope and acceptance criteria
-- Add issues to the FORGE v0.3.0 project board
-- Move issues through columns: Todo → In Progress → Done
-- Close issues with `--reason completed` when done
-- Reference issue numbers in commit messages (e.g., `fixes #3`)
+**Every task must have a ticket.** When ANY work is requested:
+1. **First** run `gh issue list --repo jmperez127/forge` to check for existing issues — avoid duplicates
+2. If no matching issue exists, create one with clear scope and acceptance criteria
+3. Add the issue to the FORGE v0.3.0 project board
+4. Set status to "In Progress" when starting work
+5. Reference issue numbers in commit messages (e.g., `fixes #3`)
+6. Close issues with `--reason completed` when done, set board status to "Done"
+7. For large features, break into sub-issues and track each separately
+
+This applies to everything: features, bugs, refactors, doc changes. No work without a ticket.
 
 Use `gh` CLI for all board operations:
 ```bash
