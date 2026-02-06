@@ -214,12 +214,12 @@ func (n *Normalizer) normalizeEntities(out *Output) {
 		// Add implicit timestamps
 		ne.Fields = append(ne.Fields, &NormalizedField{
 			Name:    "created_at",
-			Type:    "time",
+			Type:    n.normalizeTypeName("time"),
 			Default: "now()",
 		})
 		ne.Fields = append(ne.Fields, &NormalizedField{
 			Name:    "updated_at",
-			Type:    "time",
+			Type:    n.normalizeTypeName("time"),
 			Default: "now()",
 		})
 

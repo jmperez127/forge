@@ -247,3 +247,50 @@ relation Ticket.assignee -> User
 		})
 	}
 }
+
+func TestImplicitTimestampsAreTimestampWithTimeZone(t *testing.T) {
+	source := `
+app Test {}
+
+entity User {
+  email: string
+}
+
+entity Project {
+  name: string
+}
+`
+
+	// Parse
+	p := parser.New(source, "test.forge")
+	file := p.ParseFile()
+	if p.Diagnostics().HasErrors() {
+		t.Fatalf("parse errors: %v", p.Diagnostics().Errors())
+	}
+
+	// Analyze
+	a := analyzer.New(file)
+	diags := a.Analyze()
+	if diags.HasErrors() {
+		t.Fatalf("analysis errors: %v", diags.Errors())
+	}
+
+	// Normalize
+	n := New(file, a.Scope())
+	output, normDiags := n.Normalize()
+	if normDiags.HasErrors() {
+		t.Fatalf("normalization errors: %v", normDiags.Errors())
+	}
+
+	// Check that created_at and updated_at have the correct type
+	for _, entity := range output.Entities {
+		for _, field := range entity.Fields {
+			if field.Name == "created_at" || field.Name == "updated_at" {
+				if field.Type != "timestamp with time zone" {
+					t.Errorf("entity %s: field %s has type %q, want %q",
+						entity.Name, field.Name, field.Type, "timestamp with time zone")
+				}
+			}
+		}
+	}
+}
