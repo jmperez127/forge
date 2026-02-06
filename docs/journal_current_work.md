@@ -2,6 +2,73 @@
 
 > Active implementation log. All engineers must read this before starting and update it when completing work.
 
+## Feature: View Query Engine (Issue #13)
+
+**Started**: 2026-02-05
+**Status**: IN PROGRESS
+**Roadmap**: [03-view-query-engine.md](./roadmap/03-view-query-engine.md)
+
+### Summary
+
+Replaced the stub view handler (which issued `SELECT * FROM table` with no JOINs, filtering, sorting, or pagination) with a full query engine. The compiler now produces structured query plans with field projection, JOIN metadata, filter SQL, and sort declarations. The runtime assembles final SQL from the plan plus client-supplied parameters, supporting cursor-based pagination.
+
+### What was done
+
+- Extended compiler pipeline for views: parser (filter/sort/dotted fields), normalizer (filter/params/sort), planner (JOIN resolution, field projection, filter SQL), emitter (structured ViewField/ViewJoin/ViewSort)
+- Fixed critical parser bug: dotted field paths like `author.name` were being split into separate fields
+- Created runtime query builder package (`runtime/internal/query/`): builder.go (SQL assembly from schema + params), cursor.go (keyset pagination)
+- Rewrote `handleView` handler to use query builder with proper JOINs, filtering, sorting, cursor pagination
+- New response format: `{ items: [...], pagination: { limit, has_next, has_prev, next_cursor, prev_cursor, total } }`
+- Added filtered views to helpdesk (OpenTickets, OrgTickets, UnassignedTickets, TicketComments)
+- Added filtered views to chat (ChannelMessages, MessageThreads, PublicChannels, WorkspaceChannels)
+- Comprehensive tests: query builder unit tests, compiler parser/planner view tests
+
+### Files changed
+
+**Compiler:**
+- `compiler/internal/token/token.go` -- Added FILTER, SORT tokens
+- `compiler/internal/ast/ast.go` -- Extended ViewDecl with Filter, Sort
+- `compiler/internal/parser/parser.go` -- View filter/sort parsing, fixed dotted field parsing
+- `compiler/internal/normalizer/normalizer.go` -- Extended NormalizedView
+- `compiler/internal/planner/planner.go` -- JOIN resolution, field projection, filter SQL
+- `compiler/internal/emitter/emitter.go` -- Structured ViewSchema output
+
+**Runtime:**
+- `runtime/internal/query/builder.go` -- New: SQL query builder
+- `runtime/internal/query/cursor.go` -- New: cursor pagination
+- `runtime/internal/server/server.go` -- Updated ViewSchema types
+- `runtime/internal/server/handlers.go` -- Rewrote handleView
+- `runtime/internal/server/server_test.go` -- Updated for new types
+
+**Apps:**
+- `projects/helpdesk/views.forge` -- Added filtered views
+- `projects/chat/views.forge` -- Added filtered views
+
+### Completed TODOs (Phase 1 + Phase 2)
+
+| TODO | Description | Status |
+|------|-------------|--------|
+| 1 | Extend ViewSchema with structured query plan | done |
+| 2 | Field projection -- SELECT only declared fields | done |
+| 3 | JOIN generation for relation fields | done |
+| 4 | Runtime query builder | done |
+| 5 | WHERE clause from static view filters | done |
+| 6 | Client-side filter parameters | done |
+| 7 | ORDER BY from sort declarations | done |
+| 8 | Cursor-based pagination | done |
+
+### What remains (Phase 3)
+
+- TODO 9: Access control integration (view-level access checks beyond RLS)
+- TODO 10: Real-time view subscriptions (dependency-based invalidation)
+- TODO 11: Count queries for pagination metadata (`include=count`)
+- Validation: reject non-filterable/non-sortable fields with proper error codes
+- Integration test with real PostgreSQL
+- E2E test with Playwright
+- SDK update for new response format
+
+---
+
 ## Feature: Entity Creation from Jobs (`creates:` clause)
 
 **Started**: 2026-02-06

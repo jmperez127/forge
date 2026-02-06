@@ -309,7 +309,9 @@ func (a *HookAction) End() token.Position { return a.EndPos }
 type ViewDecl struct {
 	Name     *Ident
 	Source   *Ident
-	Fields   []*Ident
+	Fields   []*Ident          // Field names (may contain dots, e.g. "author.name")
+	Filter   Expr              // Optional filter expression (nil if none)
+	Sort     []*ViewSortField  // Optional default sort (nil if none)
 	StartPos token.Position
 	EndPos   token.Position
 }
@@ -318,6 +320,19 @@ func (d *ViewDecl) node()              {}
 func (d *ViewDecl) decl()              {}
 func (d *ViewDecl) Pos() token.Position { return d.StartPos }
 func (d *ViewDecl) End() token.Position { return d.EndPos }
+
+// ViewSortField represents a sort field in a view declaration.
+// Supports syntax like: sort: -created_at, priority
+type ViewSortField struct {
+	Field      *Ident
+	Descending bool
+	StartPos   token.Position
+	EndPos     token.Position
+}
+
+func (f *ViewSortField) node()              {}
+func (f *ViewSortField) Pos() token.Position { return f.StartPos }
+func (f *ViewSortField) End() token.Position { return f.EndPos }
 
 // WebhookDecl represents a webhook declaration for inbound external events.
 // The provider handles data normalization - no field mappings needed.

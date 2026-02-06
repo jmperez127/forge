@@ -72,6 +72,8 @@ const (
 	// Keywords - views
 	SOURCE
 	FIELDS
+	FILTER
+	SORT
 
 	// Keywords - tests
 	GIVEN
@@ -188,6 +190,8 @@ var tokenNames = map[Type]string{
 
 	SOURCE: "source",
 	FIELDS: "fields",
+	FILTER: "filter",
+	SORT:   "sort",
 
 	GIVEN:  "given",
 	WHEN:   "when",
@@ -297,6 +301,8 @@ var keywords = map[string]Type{
 
 	"source": SOURCE,
 	"fields": FIELDS,
+	"filter": FILTER,
+	"sort":   SORT,
 
 	"given":  GIVEN,
 	"when":   WHEN,

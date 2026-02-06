@@ -719,7 +719,7 @@ func (p *Parser) parseHookDecl() *ast.HookDecl {
 	return decl
 }
 
-// parseViewDecl parses: view Name { source: Entity, fields: f1, f2 }
+// parseViewDecl parses: view Name { source: Entity, fields: f1, f2, filter: expr, sort: -f1, f2 }
 func (p *Parser) parseViewDecl() *ast.ViewDecl {
 	decl := &ast.ViewDecl{StartPos: p.curToken.Pos}
 
@@ -753,25 +753,113 @@ func (p *Parser) parseViewDecl() *ast.ViewDecl {
 				continue
 			}
 			p.nextToken()
-			for p.curTokenIs(token.IDENT) {
-				decl.Fields = append(decl.Fields, p.parseIdent())
-				if p.peekTokenIs(token.COMMA) {
-					p.nextToken()
-					p.nextToken()
-				} else if p.peekTokenIs(token.DOT) {
-					// Handle path expressions like author.email
-					p.nextToken() // consume .
-					p.nextToken() // consume next ident
-				} else {
-					break
-				}
+			decl.Fields = p.parseViewFieldList()
+
+		case token.FILTER:
+			if !p.expectPeek(token.COLON) {
+				p.nextToken()
+				continue
 			}
+			p.nextToken()
+			decl.Filter = p.parseExpression(LOWEST)
+
+		case token.SORT:
+			if !p.expectPeek(token.COLON) {
+				p.nextToken()
+				continue
+			}
+			p.nextToken()
+			decl.Sort = p.parseViewSortList()
 		}
 		p.nextToken()
 	}
 
 	decl.EndPos = p.curToken.End
 	return decl
+}
+
+// parseViewFieldList parses a comma-separated list of field names,
+// including dotted paths like author.name, author.avatar_url.
+func (p *Parser) parseViewFieldList() []*ast.Ident {
+	var fields []*ast.Ident
+
+	for p.curTokenIs(token.IDENT) || p.curToken.Type.IsKeyword() {
+		fieldName := p.curToken.Literal
+		startPos := p.curToken.Pos
+		endPos := p.curToken.End
+
+		// Handle dotted paths like author.name
+		for p.peekTokenIs(token.DOT) {
+			p.nextToken() // consume .
+			p.nextToken() // consume next part
+			fieldName += "." + p.curToken.Literal
+			endPos = p.curToken.End
+		}
+
+		fields = append(fields, &ast.Ident{
+			Name:     fieldName,
+			StartPos: startPos,
+			EndPos:   endPos,
+		})
+
+		if p.peekTokenIs(token.COMMA) {
+			p.nextToken()
+			p.nextToken()
+		} else {
+			break
+		}
+	}
+
+	return fields
+}
+
+// parseViewSortList parses a comma-separated list of sort fields.
+// Prefix '-' means descending: sort: -created_at, priority
+func (p *Parser) parseViewSortList() []*ast.ViewSortField {
+	var sorts []*ast.ViewSortField
+
+	for {
+		sort := &ast.ViewSortField{StartPos: p.curToken.Pos}
+
+		// Check for descending prefix
+		if p.curTokenIs(token.MINUS) {
+			sort.Descending = true
+			p.nextToken()
+		}
+
+		if !p.curTokenIs(token.IDENT) && !p.curToken.Type.IsKeyword() {
+			break
+		}
+
+		// Handle dotted paths in sort fields
+		fieldName := p.curToken.Literal
+		startPos := p.curToken.Pos
+		endPos := p.curToken.End
+
+		for p.peekTokenIs(token.DOT) {
+			p.nextToken() // consume .
+			p.nextToken() // consume next part
+			fieldName += "." + p.curToken.Literal
+			endPos = p.curToken.End
+		}
+
+		sort.Field = &ast.Ident{
+			Name:     fieldName,
+			StartPos: startPos,
+			EndPos:   endPos,
+		}
+		sort.EndPos = endPos
+		sorts = append(sorts, sort)
+
+		if p.peekTokenIs(token.COMMA) {
+			p.nextToken()
+			p.nextToken()
+		} else {
+			break
+		}
+	}
+
+	return sorts
 }
 
 // parseWebhookDecl parses:

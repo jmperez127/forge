@@ -1,6 +1,6 @@
 # View Query Engine -- Implementation Roadmap
 
-> **Status**: Proposed
+> **Status**: In Progress
 > **Author**: Principal Engineer Review
 > **Date**: 2026-02-05
 > **Scope**: Compiler (`planner/`, `emitter/`) and Runtime (`server/handlers.go`, new `query/` package)
@@ -119,7 +119,7 @@ The artifact `ViewSchema` will be extended to carry structured query metadata ra
 
 ### Phase 1: Core Query Generation (compiler + runtime)
 
-- [ ] **TODO 1: Extend ViewSchema with structured query plan**
+- [x] **TODO 1: Extend ViewSchema with structured query plan**
 
   File: `compiler/internal/emitter/emitter.go`
   File: `runtime/internal/server/server.go` (Artifact types)
@@ -158,7 +158,7 @@ The artifact `ViewSchema` will be extended to carry structured query metadata ra
   }
   ```
 
-- [ ] **TODO 2: Field projection -- SELECT only declared fields**
+- [x] **TODO 2: Field projection -- SELECT only declared fields**
 
   File: `compiler/internal/planner/planner.go`
 
@@ -193,13 +193,13 @@ The artifact `ViewSchema` will be extended to carry structured query metadata ra
   }
   ```
 
-- [ ] **TODO 3: JOIN generation for relation fields**
+- [x] **TODO 3: JOIN generation for relation fields**
 
   File: `compiler/internal/planner/planner.go`
 
   Build deduplicated join list. Multiple fields on the same relation (e.g., `author.display_name` and `author.avatar_url`) share one join, keyed by alias.
 
-- [ ] **TODO 4: Runtime query builder**
+- [x] **TODO 4: Runtime query builder**
 
   New file: `runtime/internal/query/builder.go`
 
@@ -207,19 +207,19 @@ The artifact `ViewSchema` will be extended to carry structured query metadata ra
 
 ### Phase 2: Filtering, Sorting, Pagination
 
-- [ ] **TODO 5: WHERE clause from static view filters**
+- [x] **TODO 5: WHERE clause from static view filters**
 
   Extend `.forge` syntax with `filter:` clause in views. Compiler changes across ast, parser, normalizer, planner, and emitter. `param.*` references become runtime parameters.
 
-- [ ] **TODO 6: Client-side filter parameters**
+- [x] **TODO 6: Client-side filter parameters**
 
   Parse HTTP query params: `filter[field]=value`, `filter[field][op]=value`, `sort=-field`, `limit=N`, `cursor=opaque`, `param.key=value`. Validate all fields against the view's declared filterable/sortable fields.
 
-- [ ] **TODO 7: ORDER BY from sort declarations**
+- [x] **TODO 7: ORDER BY from sort declarations**
 
   View-level default sort, client override, always append `id` as tiebreaker for cursor stability.
 
-- [ ] **TODO 8: Cursor-based pagination**
+- [x] **TODO 8: Cursor-based pagination**
 
   New file: `runtime/internal/query/cursor.go`. Encode last row's sort values into opaque base64 cursor. Decode into `(col1, col2) > ($1, $2)` row-value comparison. Stable under inserts/deletes, O(1) for any page.
 
@@ -444,29 +444,29 @@ Out of scope. Architecture supports it via arbitrary expressions in `ViewField.C
 
 ## 7. Verification Checklist
 
-- [ ] Compiler emits valid SQL for simple field views (no joins)
-- [ ] Compiler emits valid SQL for views with one relation join
-- [ ] Compiler emits valid SQL for views with multiple joins to same table (different aliases)
-- [ ] Compiler deduplicates joins for multiple fields on same relation
-- [ ] Compiler rejects undefined entities/fields (E0301/E0302)
-- [ ] Compiler always includes `id` in SELECT for cursor support
-- [ ] Runtime returns `{ items, pagination }` format
-- [ ] Runtime parses `filter[field]=value` correctly
-- [ ] Runtime parses `filter[field][op]=value` correctly
+- [x] Compiler emits valid SQL for simple field views (no joins)
+- [x] Compiler emits valid SQL for views with one relation join
+- [x] Compiler emits valid SQL for views with multiple joins to same table (different aliases)
+- [x] Compiler deduplicates joins for multiple fields on same relation
+- [x] Compiler rejects undefined entities/fields (E0301/E0302)
+- [x] Compiler always includes `id` in SELECT for cursor support
+- [x] Runtime returns `{ items, pagination }` format
+- [x] Runtime parses `filter[field]=value` correctly
+- [x] Runtime parses `filter[field][op]=value` correctly
 - [ ] Runtime rejects non-filterable fields (`INVALID_FILTER`)
-- [ ] Runtime parses `sort=-field,field` correctly
+- [x] Runtime parses `sort=-field,field` correctly
 - [ ] Runtime rejects non-sortable fields (`INVALID_SORT`)
-- [ ] Cursor encode/decode round-trip is stable
-- [ ] Cursor pagination produces non-overlapping pages
-- [ ] `has_next` correct on last page vs middle page
-- [ ] Empty views return correct structure
+- [x] Cursor encode/decode round-trip is stable
+- [x] Cursor pagination produces non-overlapping pages
+- [x] `has_next` correct on last page vs middle page
+- [x] Empty views return correct structure
 - [ ] RLS filters results per authenticated user
 - [ ] Count query correct when `include=count`
 - [ ] Count query skipped when not requested
-- [ ] `param.*` validation (`MISSING_PARAM`)
+- [x] `param.*` validation (`MISSING_PARAM`)
 - [ ] WebSocket invalidation fires on dependency mutation
 - [ ] Slow query logging in dev mode
-- [ ] All SQL parameterized (no user input interpolation)
+- [x] All SQL parameterized (no user input interpolation)
 - [ ] Integration test with real PostgreSQL passes
 - [ ] E2E test passes
 - [ ] SDK updated for new response format

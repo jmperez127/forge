@@ -17,6 +17,29 @@ export interface ForgeResponse<T> {
   data: T;
 }
 
+export interface Pagination {
+  limit: number;
+  has_next: boolean;
+  has_prev: boolean;
+  next_cursor: string | null;
+  prev_cursor: string | null;
+  total: number | null;
+}
+
+export interface ViewResponse<T> {
+  items: T[];
+  pagination: Pagination;
+}
+
+export interface ViewQueryParams {
+  filter?: string;
+  sort?: string;
+  limit?: string;
+  cursor?: string;
+  [key: `param.${string}`]: string;
+  [key: string]: string | undefined;
+}
+
 export interface SubscriptionOptions<T> {
   onData: (data: T[]) => void;
   onError?: (error: ForgeError) => void;
@@ -53,12 +76,35 @@ export class ForgeClient {
     return data.data;
   }
 
+  private async requestView<T>(path: string, params?: ViewQueryParams): Promise<ViewResponse<T>> {
+    const url = new URL(`${this.config.url}${path}`);
+    if (params) {
+      for (const [key, value] of Object.entries(params)) {
+        if (value !== undefined) {
+          url.searchParams.set(key, value);
+        }
+      }
+    }
+    const response = await fetch(url.toString(), {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(this.config.token ? { 'Authorization': `Bearer ${this.config.token}` } : {}),
+      },
+    });
+    const data = await response.json();
+    if (data.status === 'error') {
+      if (this.config.onError) this.config.onError(data);
+      throw data;
+    }
+    return data.data;
+  }
+
   async action(name: string, input: Record<string, unknown>): Promise<void> {
     return this.request<void>('POST', `/api/actions/${name}`, input);
   }
 
-  async view<T>(name: string): Promise<T[]> {
-    return this.request<T[]>('GET', `/api/views/${name}`);
+  async view<T>(name: string, params?: ViewQueryParams): Promise<ViewResponse<T>> {
+    return this.requestView<T>(`/api/views/${name}`, params);
   }
 
   async list<T>(entity: string): Promise<T[]> {
@@ -132,7 +178,7 @@ export class ForgeClient {
           const subs = this.subscriptions.get(data.view);
           if (subs) {
             for (const callback of subs) {
-              callback(data.data);
+              callback(data.items);
             }
           }
         }

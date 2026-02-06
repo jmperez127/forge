@@ -136,11 +136,39 @@ type AccessSchema struct {
 
 // ViewSchema represents a view.
 type ViewSchema struct {
-	Name         string   `json:"name"`
-	Source       string   `json:"source"`
-	Fields       []string `json:"fields"`
-	Query        string   `json:"query"`
-	Dependencies []string `json:"dependencies"`
+	Name         string      `json:"name"`
+	Source       string      `json:"source"`
+	SourceTable  string      `json:"source_table"`
+	Fields       []ViewField `json:"fields"`
+	Joins        []ViewJoin  `json:"joins,omitempty"`
+	Filter       string      `json:"filter,omitempty"`
+	Params       []string    `json:"params,omitempty"`
+	DefaultSort  []ViewSort  `json:"default_sort,omitempty"`
+	Dependencies []string    `json:"dependencies"`
+}
+
+// ViewField represents a resolved field in a view.
+type ViewField struct {
+	Name       string `json:"name"`
+	Column     string `json:"column"`
+	Alias      string `json:"alias"`
+	Type       string `json:"type"`
+	Filterable bool   `json:"filterable"`
+	Sortable   bool   `json:"sortable"`
+}
+
+// ViewJoin represents a JOIN required by a view.
+type ViewJoin struct {
+	Table string `json:"table"`
+	Alias string `json:"alias"`
+	On    string `json:"on"`
+	Type  string `json:"type"`
+}
+
+// ViewSort represents a default sort field.
+type ViewSort struct {
+	Column    string `json:"column"`
+	Direction string `json:"direction"`
 }
 
 // JobSchema represents a job.

@@ -397,7 +397,7 @@ Access control policies for each entity:
 
 ### Views Page (`/_dev/views`)
 
-View definitions with source entities, fields, and generated SQL:
+View definitions with source entities, structured field projections, JOINs, filters, sort, and dependencies. The view query engine compiles `.forge` view declarations into structured query plans that the runtime assembles into parameterized SQL at request time.
 
 ```json
 {
@@ -405,15 +405,60 @@ View definitions with source entities, fields, and generated SQL:
     "TicketList": {
       "name": "TicketList",
       "source": "Ticket",
-      "fields": ["id", "subject", "status", "priority", "author.name", "assignee.name", "created_at"],
-      "query": "SELECT t.id, t.subject, t.status, t.priority, u.name as author_name, a.name as assignee_name, t.created_at FROM tickets t JOIN users u ON t.author_id = u.id LEFT JOIN users a ON t.assignee_id = a.id WHERE ...",
+      "source_table": "tickets",
+      "fields": [
+        { "name": "id", "column": "t.id", "alias": "id", "type": "uuid", "filterable": true, "sortable": true },
+        { "name": "subject", "column": "t.subject", "alias": "subject", "type": "string", "filterable": true, "sortable": true },
+        { "name": "status", "column": "t.status", "alias": "status", "type": "enum", "filterable": true, "sortable": true },
+        { "name": "priority", "column": "t.priority", "alias": "priority", "type": "enum", "filterable": true, "sortable": true },
+        { "name": "author.name", "column": "j_author.name", "alias": "author.name", "type": "string", "filterable": false, "sortable": false },
+        { "name": "assignee.name", "column": "j_assignee.name", "alias": "assignee.name", "type": "string", "filterable": false, "sortable": false },
+        { "name": "created_at", "column": "t.created_at", "alias": "created_at", "type": "time", "filterable": true, "sortable": true }
+      ],
+      "joins": [
+        { "table": "users", "alias": "j_author", "on": "j_author.id = t.author_id", "type": "LEFT" },
+        { "table": "users", "alias": "j_assignee", "on": "j_assignee.id = t.assignee_id", "type": "LEFT" }
+      ],
+      "default_sort": [
+        { "column": "t.created_at", "direction": "DESC" }
+      ],
       "dependencies": ["Ticket", "User"]
     },
-    "TicketDetail": {
-      "name": "TicketDetail",
+    "OpenTickets": {
+      "name": "OpenTickets",
       "source": "Ticket",
-      "fields": ["*", "comments.*", "author.*", "assignee.*"],
-      "dependencies": ["Ticket", "Comment", "User"]
+      "source_table": "tickets",
+      "fields": [
+        { "name": "subject", "column": "t.subject", "alias": "subject", "type": "string", "filterable": true, "sortable": true },
+        { "name": "status", "column": "t.status", "alias": "status", "type": "enum", "filterable": true, "sortable": true }
+      ],
+      "joins": [],
+      "filter": "t.status = 'open'",
+      "default_sort": [
+        { "column": "t.created_at", "direction": "DESC" }
+      ],
+      "dependencies": ["Ticket"]
+    }
+  }
+}
+```
+
+The runtime query builder uses this structured plan to assemble final SQL with client-supplied filters, sort overrides, and cursor-based pagination. The response format is:
+
+```json
+{
+  "status": "ok",
+  "data": {
+    "items": [
+      { "id": "...", "subject": "Cannot login", "status": "open", "author.name": "Alice" }
+    ],
+    "pagination": {
+      "limit": 50,
+      "has_next": true,
+      "has_prev": false,
+      "next_cursor": "eyJ2Ijp7...",
+      "prev_cursor": null,
+      "total": null
     }
   }
 }

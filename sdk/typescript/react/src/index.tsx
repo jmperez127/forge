@@ -8,7 +8,14 @@ import {
   useMemo,
   type ReactNode,
 } from 'react';
-import { ForgeClient, type ForgeClientConfig, type ForgeError } from '@forge/client';
+import {
+  ForgeClient,
+  type ForgeClientConfig,
+  type ForgeError,
+  type Pagination,
+  type ViewResponse,
+  type ViewQueryParams,
+} from '@forge/client';
 
 // Context
 
@@ -46,32 +53,109 @@ export interface UseQueryResult<T> {
   refetch: () => Promise<void>;
 }
 
+export interface UseViewResult<T> {
+  items: T[];
+  pagination: Pagination | undefined;
+  loading: boolean;
+  error: ForgeError | undefined;
+  refetch: () => Promise<void>;
+  fetchNext: () => Promise<void>;
+  fetchPrev: () => Promise<void>;
+}
+
 export interface UseActionResult<TInput> {
   execute: (input: TInput) => Promise<void>;
   loading: boolean;
   error: ForgeError | undefined;
 }
 
-// View hook
+// View hook (new format with pagination)
 
-export function useList<T>(viewName: string): UseQueryResult<T[]> {
+export function useView<T>(viewName: string, params?: ViewQueryParams): UseViewResult<T> {
   const client = useForge();
-  const [data, setData] = useState<T[] | undefined>(undefined);
+  const [items, setItems] = useState<T[]>([]);
+  const [pagination, setPagination] = useState<Pagination | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<ForgeError | undefined>(undefined);
+  const [cursorOverride, setCursorOverride] = useState<string | undefined>(undefined);
 
-  const fetch = useCallback(async () => {
+  const stableParams = useMemo(() => JSON.stringify(params), [params]);
+
+  const fetchData = useCallback(async (cursorParam?: string) => {
     setLoading(true);
     try {
-      const result = await client.view<T>(viewName);
-      setData(result);
+      const queryParams: ViewQueryParams = params ? { ...params } : {};
+      if (cursorParam) {
+        queryParams.cursor = cursorParam;
+      }
+      const result = await client.view<T>(viewName, queryParams);
+      setItems(result.items);
+      setPagination(result.pagination);
       setError(undefined);
     } catch (e) {
       setError(e as ForgeError);
     } finally {
       setLoading(false);
     }
+  }, [client, viewName, stableParams]);
+
+  const refetch = useCallback(async () => {
+    setCursorOverride(undefined);
+    await fetchData();
+  }, [fetchData]);
+
+  const fetchNext = useCallback(async () => {
+    if (pagination?.has_next && pagination.next_cursor) {
+      setCursorOverride(pagination.next_cursor);
+      await fetchData(pagination.next_cursor);
+    }
+  }, [fetchData, pagination]);
+
+  const fetchPrev = useCallback(async () => {
+    if (pagination?.has_prev && pagination.prev_cursor) {
+      setCursorOverride(pagination.prev_cursor);
+      await fetchData(pagination.prev_cursor);
+    }
+  }, [fetchData, pagination]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  // Subscribe to real-time updates
+  useEffect(() => {
+    const unsubscribe = client.subscribe<T>(viewName, {
+      onData: setItems,
+      onError: setError,
+    });
+    return unsubscribe;
   }, [client, viewName]);
+
+  return { items, pagination, loading, error, refetch, fetchNext, fetchPrev };
+}
+
+// Legacy view hook (backward compatible, returns items as data)
+
+export function useList<T>(viewName: string, params?: ViewQueryParams): UseQueryResult<T[]> {
+  const client = useForge();
+  const [data, setData] = useState<T[] | undefined>(undefined);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<ForgeError | undefined>(undefined);
+
+  const stableParams = useMemo(() => JSON.stringify(params), [params]);
+
+  const fetch = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await client.view<T>(viewName, params);
+      setData(result.items);
+      setError(undefined);
+    } catch (e) {
+      setError(e as ForgeError);
+    } finally {
+      setLoading(false);
+    }
+  }, [client, viewName, stableParams]);
 
   useEffect(() => {
     fetch();
@@ -295,4 +379,11 @@ export function useOptimisticMutation<T, TInput extends Record<string, unknown>>
 }
 
 // Re-export client types
-export type { ForgeClientConfig, ForgeError, ForgeClient };
+export type {
+  ForgeClientConfig,
+  ForgeError,
+  ForgeClient,
+  Pagination,
+  ViewResponse,
+  ViewQueryParams,
+};

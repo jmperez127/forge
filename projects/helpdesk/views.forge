@@ -40,3 +40,37 @@ view ActivityFeed {
   source: ActivityLog
   fields: action, description, entity_type, created_at
 }
+
+# Filtered views for real helpdesk use cases
+
+# Open tickets only - the most common agent view
+view OpenTickets {
+  source: Ticket
+  fields: subject, status, priority, author.name, assignee.name
+  filter: status == "open"
+  sort: -priority
+}
+
+# Tickets for a specific organization (parameterized)
+view OrgTickets {
+  source: Ticket
+  fields: subject, status, priority, author.name, created_at
+  filter: org == param.org_id
+  sort: -created_at
+}
+
+# Unassigned tickets waiting for agent pickup
+view UnassignedTickets {
+  source: Ticket
+  fields: subject, status, priority, author.name, created_at
+  filter: status == "open"
+  sort: -priority
+}
+
+# Comments for a specific ticket (parameterized)
+view TicketComments {
+  source: Comment
+  fields: body, author.name, internal, created_at
+  filter: ticket == param.ticket_id
+  sort: created_at
+}

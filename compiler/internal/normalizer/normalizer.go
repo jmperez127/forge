@@ -78,10 +78,19 @@ type NormalizedJob struct {
 
 // NormalizedView contains normalized view information.
 type NormalizedView struct {
-	Name       string
-	Source     string
-	Fields     []string
-	Dependency []string // entities this view depends on
+	Name        string
+	Source      string
+	Fields      []string
+	Filter      string           // CEL expression for static filter (empty if none)
+	Params      []string         // param names extracted from filter (e.g., ["org_id"])
+	DefaultSort []NormalizedSort // default sort fields
+	Dependency  []string         // entities this view depends on
+}
+
+// NormalizedSort represents a sort field.
+type NormalizedSort struct {
+	Field     string // field name (may be dotted, e.g. "created_at")
+	Direction string // "asc" or "desc"
 }
 
 // Output contains all normalized data.
@@ -467,8 +476,62 @@ func (n *Normalizer) normalizeViews(out *Output) {
 			nv.Fields = append(nv.Fields, field.Name)
 		}
 
+		// Normalize filter expression and extract param references
+		if view.Filter != nil {
+			nv.Filter = n.exprToCEL(view.Filter)
+			nv.Params = n.extractParams(view.Filter)
+		}
+
+		// Normalize sort fields
+		for _, sort := range view.Sort {
+			dir := "asc"
+			if sort.Descending {
+				dir = "desc"
+			}
+			nv.DefaultSort = append(nv.DefaultSort, NormalizedSort{
+				Field:     sort.Field.Name,
+				Direction: dir,
+			})
+		}
+
 		out.Views = append(out.Views, nv)
 	}
+}
+
+// extractParams walks an expression tree and collects param.* references.
+// Returns a deduplicated list of parameter names.
+func (n *Normalizer) extractParams(expr ast.Expr) []string {
+	var params []string
+	seen := make(map[string]bool)
+
+	var walk func(ast.Expr)
+	walk = func(e ast.Expr) {
+		if e == nil {
+			return
+		}
+		switch ex := e.(type) {
+		case *ast.PathExpr:
+			if len(ex.Parts) >= 2 && ex.Parts[0].Name == "param" {
+				name := ex.Parts[1].Name
+				if !seen[name] {
+					seen[name] = true
+					params = append(params, name)
+				}
+			}
+		case *ast.BinaryExpr:
+			walk(ex.Left)
+			walk(ex.Right)
+		case *ast.UnaryExpr:
+			walk(ex.Operand)
+		case *ast.InExpr:
+			walk(ex.Left)
+			walk(ex.Right)
+		case *ast.ParenExpr:
+			walk(ex.Inner)
+		}
+	}
+	walk(expr)
+	return params
 }
 
 func (n *Normalizer) normalizeMessages(out *Output) {

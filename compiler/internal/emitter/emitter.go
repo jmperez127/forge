@@ -93,11 +93,39 @@ type AccessSchema struct {
 
 // ViewSchema represents a view in the artifact.
 type ViewSchema struct {
-	Name         string   `json:"name"`
-	Source       string   `json:"source"`
-	Fields       []string `json:"fields"`
-	Query        string   `json:"query"`
-	Dependencies []string `json:"dependencies"`
+	Name         string      `json:"name"`
+	Source       string      `json:"source"`
+	SourceTable  string      `json:"source_table"`
+	Fields       []ViewField `json:"fields"`
+	Joins        []ViewJoin  `json:"joins,omitempty"`
+	Filter       string      `json:"filter,omitempty"`
+	Params       []string    `json:"params,omitempty"`
+	DefaultSort  []ViewSort  `json:"default_sort,omitempty"`
+	Dependencies []string    `json:"dependencies"`
+}
+
+// ViewField represents a resolved field in a view.
+type ViewField struct {
+	Name       string `json:"name"`
+	Column     string `json:"column"`
+	Alias      string `json:"alias"`
+	Type       string `json:"type"`
+	Filterable bool   `json:"filterable"`
+	Sortable   bool   `json:"sortable"`
+}
+
+// ViewJoin represents a JOIN required by a view.
+type ViewJoin struct {
+	Table string `json:"table"`
+	Alias string `json:"alias"`
+	On    string `json:"on"`
+	Type  string `json:"type"`
+}
+
+// ViewSort represents a default sort field.
+type ViewSort struct {
+	Column    string `json:"column"`
+	Direction string `json:"direction"`
 }
 
 // JobSchema represents a job in the artifact.
@@ -293,13 +321,46 @@ func (e *Emitter) generateArtifact() *Artifact {
 
 	// Generate view schemas
 	for name, view := range e.plan.Views {
-		artifact.Views[name] = &ViewSchema{
+		vs := &ViewSchema{
 			Name:         name,
 			Source:       view.Source,
-			Fields:       view.Fields,
-			Query:        view.Query,
+			SourceTable:  view.SourceTable,
+			Filter:       view.Filter,
+			Params:       view.Params,
 			Dependencies: view.Dependencies,
 		}
+
+		// Convert resolved fields
+		for _, f := range view.Fields {
+			vs.Fields = append(vs.Fields, ViewField{
+				Name:       f.Name,
+				Column:     f.Column,
+				Alias:      f.Alias,
+				Type:       f.Type,
+				Filterable: f.Filterable,
+				Sortable:   f.Sortable,
+			})
+		}
+
+		// Convert resolved joins
+		for _, j := range view.Joins {
+			vs.Joins = append(vs.Joins, ViewJoin{
+				Table: j.Table,
+				Alias: j.Alias,
+				On:    j.On,
+				Type:  j.Type,
+			})
+		}
+
+		// Convert resolved sort
+		for _, s := range view.DefaultSort {
+			vs.DefaultSort = append(vs.DefaultSort, ViewSort{
+				Column:    s.Column,
+				Direction: s.Direction,
+			})
+		}
+
+		artifact.Views[name] = vs
 	}
 
 	// Generate job schemas
@@ -544,11 +605,51 @@ func (e *Emitter) generateTypeScriptClient() string {
 	b.WriteString("// View Types\n")
 	for _, view := range e.normalized.Views {
 		b.WriteString(fmt.Sprintf("export interface %sItem {\n", view.Name))
+		b.WriteString("  id: string;\n")
 		for _, field := range view.Fields {
-			b.WriteString(fmt.Sprintf("  %s: any;\n", field))
+			if field == "id" {
+				continue
+			}
+			// Use bracket notation for dotted fields
+			if strings.Contains(field, ".") {
+				b.WriteString(fmt.Sprintf("  '%s': any;\n", field))
+			} else {
+				b.WriteString(fmt.Sprintf("  %s: any;\n", field))
+			}
 		}
 		b.WriteString("}\n\n")
 	}
+
+	// Generate view params types
+	b.WriteString("// View Params Types\n")
+	for _, view := range e.normalized.Views {
+		if len(view.Params) > 0 {
+			b.WriteString(fmt.Sprintf("export interface %sParams {\n", view.Name))
+			for _, param := range view.Params {
+				b.WriteString(fmt.Sprintf("  %s: string;\n", param))
+			}
+			b.WriteString("}\n\n")
+		}
+	}
+
+	// Generate pagination type
+	b.WriteString(`// Pagination
+export interface Pagination {
+  limit: number;
+  has_next: boolean;
+  has_prev: boolean;
+  next_cursor: string | null;
+  prev_cursor: string | null;
+  total: number | null;
+}
+
+export interface ViewResponse<T> {
+  items: T[];
+  pagination: Pagination;
+}
+
+`)
+
 
 	// Generate message codes
 	b.WriteString("// Message Codes\n")
@@ -615,6 +716,27 @@ export class ForgeClient {
     return data.data;
   }
 
+  private async requestView<T>(path: string, params?: Record<string, string>): Promise<ViewResponse<T>> {
+    const url = new URL(` + "`${this.config.url}${path}`" + `);
+    if (params) {
+      for (const [key, value] of Object.entries(params)) {
+        url.searchParams.set(key, value);
+      }
+    }
+    const response = await fetch(url.toString(), {
+      headers: {
+        'Content-Type': 'application/json',
+        ...(this.config.token ? { 'Authorization': ` + "`Bearer ${this.config.token}`" + ` } : {}),
+      },
+    });
+    const data = await response.json();
+    if (data.status === 'error') {
+      if (this.config.onError) this.config.onError(data);
+      throw data;
+    }
+    return data.data;
+  }
+
   // Actions
   actions = {
 `)
@@ -633,11 +755,11 @@ export class ForgeClient {
   views = {
 `)
 
-	// Generate view methods
+	// Generate view methods with query param support
 	for _, view := range e.normalized.Views {
 		methodName := e.camelCase(view.Name)
 		itemType := view.Name + "Item"
-		b.WriteString(fmt.Sprintf("    %s: () => this.request<%s[]>('GET', '/views/%s'),\n",
+		b.WriteString(fmt.Sprintf("    %s: (params?: Record<string, string>) => this.requestView<%s>('/views/%s', params),\n",
 			methodName, itemType, view.Name))
 	}
 
@@ -679,7 +801,7 @@ func (e *Emitter) generateTypeScriptReact() string {
 	b.WriteString("// @forge/react\n\n")
 
 	b.WriteString("import { useEffect, useState, useCallback, useContext, createContext } from 'react';\n")
-	b.WriteString("import type { ForgeClient, ForgeError, MessageCode } from '@forge/client';\n\n")
+	b.WriteString("import type { ForgeClient, ForgeError, MessageCode, Pagination, ViewResponse } from '@forge/client';\n\n")
 
 	// Generate imports for entity types
 	b.WriteString("import type {\n")
@@ -718,6 +840,16 @@ interface UseQueryResult<T> {
   refetch: () => Promise<void>;
 }
 
+interface UseViewResult<T> {
+  items: T[];
+  pagination: Pagination | undefined;
+  loading: boolean;
+  error: ForgeError | undefined;
+  refetch: () => Promise<void>;
+  fetchNext: () => Promise<void>;
+  fetchPrev: () => Promise<void>;
+}
+
 interface UseActionResult<TInput> {
   execute: (input: TInput) => Promise<void>;
   loading: boolean;
@@ -732,24 +864,26 @@ interface UseActionResult<TInput> {
 		hookName := fmt.Sprintf("use%s", view.Name)
 		itemType := view.Name + "Item"
 
-		b.WriteString(fmt.Sprintf(`export function %s(): UseQueryResult<%s[]> {
+		b.WriteString(fmt.Sprintf(`export function %s(params?: Record<string, string>): UseViewResult<%s> {
   const client = useForge();
-  const [data, setData] = useState<%s[] | undefined>(undefined);
+  const [items, setItems] = useState<%s[]>([]);
+  const [pagination, setPagination] = useState<Pagination | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<ForgeError | undefined>(undefined);
 
   const fetch = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await client.views.%s();
-      setData(result);
+      const result = await client.views.%s(params);
+      setItems(result.items);
+      setPagination(result.pagination);
       setError(undefined);
     } catch (e) {
       setError(e as ForgeError);
     } finally {
       setLoading(false);
     }
-  }, [client]);
+  }, [client, params]);
 
   useEffect(() => {
     fetch();
@@ -758,16 +892,48 @@ interface UseActionResult<TInput> {
   // Subscribe to real-time updates
   useEffect(() => {
     const unsubscribe = client.subscribe<%s>('%s', {
-      onData: setData,
+      onData: setItems,
       onError: setError,
     });
     return unsubscribe;
   }, [client]);
 
-  return { data, loading, error, refetch: fetch };
+  const fetchNext = useCallback(async () => {
+    if (pagination?.has_next && pagination.next_cursor) {
+      setLoading(true);
+      try {
+        const result = await client.views.%s({ ...params, cursor: pagination.next_cursor });
+        setItems(result.items);
+        setPagination(result.pagination);
+        setError(undefined);
+      } catch (e) {
+        setError(e as ForgeError);
+      } finally {
+        setLoading(false);
+      }
+    }
+  }, [client, params, pagination]);
+
+  const fetchPrev = useCallback(async () => {
+    if (pagination?.has_prev && pagination.prev_cursor) {
+      setLoading(true);
+      try {
+        const result = await client.views.%s({ ...params, cursor: pagination.prev_cursor });
+        setItems(result.items);
+        setPagination(result.pagination);
+        setError(undefined);
+      } catch (e) {
+        setError(e as ForgeError);
+      } finally {
+        setLoading(false);
+      }
+    }
+  }, [client, params, pagination]);
+
+  return { items, pagination, loading, error, refetch: fetch, fetchNext, fetchPrev };
 }
 
-`, hookName, itemType, itemType, e.camelCase(view.Name), itemType, view.Name))
+`, hookName, itemType, itemType, e.camelCase(view.Name), itemType, view.Name, e.camelCase(view.Name), e.camelCase(view.Name)))
 	}
 
 	// Generate hooks for actions
@@ -800,9 +966,77 @@ interface UseActionResult<TInput> {
 `, hookName, inputType, inputType, e.camelCase(action.Name)))
 	}
 
-	// Generic useList and useAction
+	// Generic useView, useList, and useAction
 	b.WriteString(`// Generic hooks for dynamic view/action names
-export function useList<T>(viewName: string): UseQueryResult<T[]> {
+export function useView<T>(viewName: string, params?: Record<string, string>): UseViewResult<T> {
+  const client = useForge();
+  const [items, setItems] = useState<T[]>([]);
+  const [pagination, setPagination] = useState<Pagination | undefined>(undefined);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<ForgeError | undefined>(undefined);
+
+  const fetch = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await (client.views as any)[viewName](params);
+      setItems(result.items);
+      setPagination(result.pagination);
+      setError(undefined);
+    } catch (e) {
+      setError(e as ForgeError);
+    } finally {
+      setLoading(false);
+    }
+  }, [client, viewName, params]);
+
+  useEffect(() => {
+    fetch();
+  }, [fetch]);
+
+  useEffect(() => {
+    const unsubscribe = client.subscribe<T>(viewName, {
+      onData: setItems,
+      onError: setError,
+    });
+    return unsubscribe;
+  }, [client, viewName]);
+
+  const fetchNext = useCallback(async () => {
+    if (pagination?.has_next && pagination.next_cursor) {
+      setLoading(true);
+      try {
+        const result = await (client.views as any)[viewName]({ ...params, cursor: pagination.next_cursor });
+        setItems(result.items);
+        setPagination(result.pagination);
+        setError(undefined);
+      } catch (e) {
+        setError(e as ForgeError);
+      } finally {
+        setLoading(false);
+      }
+    }
+  }, [client, viewName, params, pagination]);
+
+  const fetchPrev = useCallback(async () => {
+    if (pagination?.has_prev && pagination.prev_cursor) {
+      setLoading(true);
+      try {
+        const result = await (client.views as any)[viewName]({ ...params, cursor: pagination.prev_cursor });
+        setItems(result.items);
+        setPagination(result.pagination);
+        setError(undefined);
+      } catch (e) {
+        setError(e as ForgeError);
+      } finally {
+        setLoading(false);
+      }
+    }
+  }, [client, viewName, params, pagination]);
+
+  return { items, pagination, loading, error, refetch: fetch, fetchNext, fetchPrev };
+}
+
+export function useList<T>(viewName: string, params?: Record<string, string>): UseQueryResult<T[]> {
   const client = useForge();
   const [data, setData] = useState<T[] | undefined>(undefined);
   const [loading, setLoading] = useState(true);
@@ -811,15 +1045,15 @@ export function useList<T>(viewName: string): UseQueryResult<T[]> {
   const fetch = useCallback(async () => {
     setLoading(true);
     try {
-      const result = await (client.views as any)[viewName]();
-      setData(result);
+      const result = await (client.views as any)[viewName](params);
+      setData(result.items);
       setError(undefined);
     } catch (e) {
       setError(e as ForgeError);
     } finally {
       setLoading(false);
     }
-  }, [client, viewName]);
+  }, [client, viewName, params]);
 
   useEffect(() => {
     fetch();

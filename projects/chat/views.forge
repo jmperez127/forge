@@ -30,3 +30,37 @@ view ActivityFeed {
   source: ActivityLog
   fields: action, description, entity_type, created_at
 }
+
+# Filtered views for real chat use cases
+
+# Messages in a specific channel (parameterized - the core chat query)
+view ChannelMessages {
+  source: Message
+  fields: id, content, edited, author.display_name, author.avatar_url
+  filter: channel == param.channel_id
+  sort: created_at
+}
+
+# Threads for a specific message (parameterized)
+view MessageThreads {
+  source: Thread
+  fields: id, content, edited, author.display_name
+  filter: parent == param.message_id
+  sort: created_at
+}
+
+# Public channels only
+view PublicChannels {
+  source: Channel
+  fields: id, name, slug, is_default
+  filter: visibility == "public"
+  sort: name
+}
+
+# Channels in a specific workspace (parameterized)
+view WorkspaceChannels {
+  source: Channel
+  fields: id, name, slug, visibility, is_default
+  filter: workspace == param.workspace_id
+  sort: name
+}

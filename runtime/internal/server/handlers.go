@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/forge-lang/forge/runtime/internal/db"
+	"github.com/forge-lang/forge/runtime/internal/query"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -550,24 +551,31 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the source entity to build a proper query
-	entity, ok := artifact.Entities[view.Source]
-	if !ok {
+	// Convert to query schema
+	qs := viewToQuerySchema(view)
+
+	// Build the query from schema + request params
+	qr, err := query.Build(qs, r)
+	if err != nil {
+		if qe, ok := err.(*query.QueryError); ok {
+			s.respondError(w, http.StatusBadRequest, Message{
+				Code:    qe.Code,
+				Message: qe.Message,
+			})
+			return
+		}
 		s.respondError(w, http.StatusInternalServerError, Message{
-			Code:    "SOURCE_NOT_FOUND",
-			Message: fmt.Sprintf("source entity %s not found", view.Source),
+			Code:    "QUERY_FAILED",
+			Message: "Failed to build view query",
 		})
 		return
 	}
 
-	// Build a proper SELECT query with field mapping
-	query := s.buildViewQuery(view, entity)
-
 	ctx := r.Context()
 	database := s.getAuthenticatedDB(r)
-	rows, err := database.Query(ctx, query)
+	rows, err := database.Query(ctx, qr.SQL, qr.Args...)
 	if err != nil {
-		s.logger.Error("view query failed", "error", err, "view", viewName, "query", query)
+		s.logger.Error("view query failed", "error", err, "view", viewName, "query", qr.SQL, "args", qr.Args)
 		s.respondError(w, http.StatusInternalServerError, Message{
 			Code:    "QUERY_FAILED",
 			Message: "Failed to query view",
@@ -578,26 +586,95 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 
 	// Collect results
 	cols := rows.FieldDescriptions()
-	results := []map[string]interface{}{}
+	var results []map[string]interface{}
 	for rows.Next() {
 		row, err := rows.Values()
 		if err != nil {
 			s.logger.Error("row scan failed", "error", err)
 			continue
 		}
-
-		// Convert to map with proper type conversion
 		results = append(results, rowToMap(cols, row))
 	}
 
-	s.respond(w, http.StatusOK, results)
+	// Trim to limit and detect has_next
+	hasNext := len(results) > qr.Limit
+	if hasNext {
+		results = results[:qr.Limit]
+	}
+
+	// Build pagination cursors
+	var nextCursor *string
+	if hasNext && len(results) > 0 {
+		c := query.EncodeCursor(results[len(results)-1], qr.Sorts)
+		nextCursor = &c
+	}
+
+	hasPrev := r.URL.Query().Get("cursor") != ""
+
+	// Optional count query
+	var total *int
+	if r.URL.Query().Get("include") == "count" {
+		countResult, countErr := query.BuildCount(qs, r)
+		if countErr == nil {
+			var count int
+			countErr = database.QueryRow(ctx, countResult.SQL, countResult.Args...).Scan(&count)
+			if countErr == nil {
+				total = &count
+			}
+		}
+	}
+
+	// Ensure empty array not null in JSON
+	if results == nil {
+		results = []map[string]interface{}{}
+	}
+
+	// Return structured response: { items, pagination }
+	s.respond(w, http.StatusOK, map[string]interface{}{
+		"items": results,
+		"pagination": query.PaginationMeta{
+			Limit:      qr.Limit,
+			HasNext:    hasNext,
+			HasPrev:    hasPrev,
+			NextCursor: nextCursor,
+			Total:      total,
+		},
+	})
 }
 
-// buildViewQuery constructs a proper SQL query for a view
-func (s *Server) buildViewQuery(view *ViewSchema, entity *EntitySchema) string {
-	// For now, select all columns from the source table
-	// TODO: Add joins for related entities
-	return fmt.Sprintf("SELECT * FROM %s", entity.Table)
+// viewToQuerySchema converts a runtime ViewSchema to a query.ViewSchema.
+func viewToQuerySchema(view *ViewSchema) *query.ViewSchema {
+	qs := &query.ViewSchema{
+		Name:        view.Name,
+		SourceTable: view.SourceTable,
+		Filter:      view.Filter,
+		Params:      view.Params,
+	}
+	for _, f := range view.Fields {
+		qs.Fields = append(qs.Fields, query.ViewField{
+			Name:       f.Name,
+			Column:     f.Column,
+			Alias:      f.Alias,
+			Type:       f.Type,
+			Filterable: f.Filterable,
+			Sortable:   f.Sortable,
+		})
+	}
+	for _, j := range view.Joins {
+		qs.Joins = append(qs.Joins, query.ViewJoin{
+			Table: j.Table,
+			Alias: j.Alias,
+			On:    j.On,
+			Type:  j.Type,
+		})
+	}
+	for _, s := range view.DefaultSort {
+		qs.DefaultSort = append(qs.DefaultSort, query.ViewSort{
+			Column:    s.Column,
+			Direction: s.Direction,
+		})
+	}
+	return qs
 }
 
 // handleAction handles POST /api/actions/{action}

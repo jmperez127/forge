@@ -50,9 +50,17 @@ func createTestArtifact(t *testing.T) string {
 		},
 		Views: map[string]*ViewSchema{
 			"UserList": {
-				Name:   "UserList",
-				Source: "User",
-				Fields: []string{"id", "name"},
+				Name:        "UserList",
+				Source:       "User",
+				SourceTable:  "users",
+				Fields: []ViewField{
+					{Name: "id", Column: "t.id", Alias: "id", Type: "uuid", Filterable: true, Sortable: true},
+					{Name: "name", Column: "t.name", Alias: "name", Type: "text", Filterable: true, Sortable: true},
+				},
+				DefaultSort: []ViewSort{
+					{Column: "t.created_at", Direction: "DESC"},
+					{Column: "t.id", Direction: "DESC"},
+				},
 			},
 		},
 		Messages: map[string]*MessageSchema{

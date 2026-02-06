@@ -56,9 +56,38 @@ type AccessNode struct {
 type ViewNode struct {
 	Name         string
 	Source       string
-	Fields       []string
+	SourceTable  string
+	Fields       []*ResolvedViewField
+	Joins        []*ResolvedViewJoin
+	Filter       string   // SQL WHERE template with $param.xxx placeholders
+	Params       []string // ordered param names for positional args
+	DefaultSort  []*ResolvedViewSort
 	Dependencies []string // entities this view depends on
-	Query        string   // generated SQL query
+	Query        string   // legacy: generated SQL query (deprecated)
+}
+
+// ResolvedViewField represents a field resolved to a SQL expression.
+type ResolvedViewField struct {
+	Name       string // original field name (e.g., "author.name")
+	Column     string // SQL expression (e.g., "j_author.name")
+	Alias      string // SQL alias (e.g., "author.name")
+	Type       string // field type for cursor encoding
+	Filterable bool
+	Sortable   bool
+}
+
+// ResolvedViewJoin represents a JOIN needed for a view.
+type ResolvedViewJoin struct {
+	Table string // table to join (e.g., "users")
+	Alias string // join alias (e.g., "j_author")
+	On    string // join condition (e.g., "j_author.id = t.author_id")
+	Type  string // "LEFT", "INNER"
+}
+
+// ResolvedViewSort represents a sort field.
+type ResolvedViewSort struct {
+	Column    string // SQL column expression
+	Direction string // "ASC" or "DESC"
 }
 
 // MigrationPlan represents changes needed to update the schema.
@@ -245,30 +274,220 @@ func (p *Planner) planActions(plan *Plan) {
 
 func (p *Planner) planViews(plan *Plan) {
 	for _, view := range p.normalized.Views {
+		sourceTable := p.tableName(view.Source)
+		sourceAlias := "t"
+
 		node := &ViewNode{
-			Name:   view.Name,
-			Source: view.Source,
-			Fields: view.Fields,
+			Name:        view.Name,
+			Source:      view.Source,
+			SourceTable: sourceTable,
+		}
+
+		// Deduplicate joins: key by alias
+		joinMap := make(map[string]*ResolvedViewJoin)
+
+		// Always include id for cursor pagination
+		node.Fields = append(node.Fields, &ResolvedViewField{
+			Name:       "id",
+			Column:     fmt.Sprintf("%s.id", sourceAlias),
+			Alias:      "id",
+			Type:       "uuid",
+			Filterable: true,
+			Sortable:   true,
+		})
+
+		// Resolve each declared field
+		for _, fieldName := range view.Fields {
+			if fieldName == "id" {
+				continue // already added
+			}
+			field, join := p.resolveViewField(fieldName, view.Source, sourceAlias)
+			if field != nil {
+				node.Fields = append(node.Fields, field)
+			}
+			if join != nil {
+				if _, exists := joinMap[join.Alias]; !exists {
+					joinMap[join.Alias] = join
+				}
+			}
+		}
+
+		// Collect joins in deterministic order
+		var joinAliases []string
+		for alias := range joinMap {
+			joinAliases = append(joinAliases, alias)
+		}
+		sort.Strings(joinAliases)
+		for _, alias := range joinAliases {
+			node.Joins = append(node.Joins, joinMap[alias])
+		}
+
+		// Resolve filter expression to SQL template
+		if view.Filter != "" {
+			node.Filter, node.Params = p.resolveViewFilter(view, sourceAlias)
+		}
+
+		// Resolve sort fields
+		if len(view.DefaultSort) > 0 {
+			for _, s := range view.DefaultSort {
+				dir := "ASC"
+				if s.Direction == "desc" {
+					dir = "DESC"
+				}
+				col := p.resolveViewSortColumn(s.Field, sourceAlias, joinMap)
+				node.DefaultSort = append(node.DefaultSort, &ResolvedViewSort{
+					Column:    col,
+					Direction: dir,
+				})
+			}
+		}
+		// Always add created_at DESC, id DESC as final tiebreaker if no sort specified
+		if len(node.DefaultSort) == 0 {
+			node.DefaultSort = append(node.DefaultSort,
+				&ResolvedViewSort{Column: fmt.Sprintf("%s.created_at", sourceAlias), Direction: "DESC"},
+				&ResolvedViewSort{Column: fmt.Sprintf("%s.id", sourceAlias), Direction: "DESC"},
+			)
 		}
 
 		// Calculate dependencies
-		node.Dependencies = p.calculateViewDependencies(view)
-
-		// Generate SQL query
-		node.Query = p.generateViewQuery(view)
+		node.Dependencies = p.calculateViewDependencies(view, joinMap)
 
 		plan.Views[view.Name] = node
 	}
 }
 
-func (p *Planner) calculateViewDependencies(view *normalizer.NormalizedView) []string {
+// resolveViewField resolves a field name to a SQL expression and optional JOIN.
+func (p *Planner) resolveViewField(field, sourceEntity, sourceAlias string) (*ResolvedViewField, *ResolvedViewJoin) {
+	parts := strings.Split(field, ".")
+	if len(parts) == 1 {
+		// Simple field: t.field_name
+		return &ResolvedViewField{
+			Name:       field,
+			Column:     fmt.Sprintf("%s.%s", sourceAlias, field),
+			Alias:      field,
+			Type:       p.resolveFieldType(sourceEntity, field),
+			Filterable: true,
+			Sortable:   true,
+		}, nil
+	}
+
+	if len(parts) == 2 {
+		relName, targetField := parts[0], parts[1]
+		relKey := fmt.Sprintf("%s.%s", sourceEntity, relName)
+		rel, exists := p.scope.Relations[relKey]
+		if !exists {
+			// Unknown relation - emit as literal (will fail at runtime)
+			return &ResolvedViewField{
+				Name:   field,
+				Column: fmt.Sprintf("%s.%s", sourceAlias, field),
+				Alias:  field,
+				Type:   "text",
+			}, nil
+		}
+
+		targetTable := p.tableName(rel.ToEntity)
+		joinAlias := fmt.Sprintf("j_%s", relName)
+		return &ResolvedViewField{
+			Name:       field,
+			Column:     fmt.Sprintf("%s.%s", joinAlias, targetField),
+			Alias:      field,
+			Type:       p.resolveFieldType(rel.ToEntity, targetField),
+			Filterable: true,
+			Sortable:   true,
+		}, &ResolvedViewJoin{
+			Table: targetTable,
+			Alias: joinAlias,
+			On:    fmt.Sprintf("%s.id = %s.%s_id", joinAlias, sourceAlias, relName),
+			Type:  "LEFT",
+		}
+	}
+
+	// Deep path (3+ parts) - not supported yet
+	return &ResolvedViewField{
+		Name:   field,
+		Column: fmt.Sprintf("%s.%s", sourceAlias, field),
+		Alias:  field,
+		Type:   "text",
+	}, nil
+}
+
+// resolveFieldType looks up the type of a field on an entity.
+func (p *Planner) resolveFieldType(entityName, fieldName string) string {
+	for _, entity := range p.normalized.Entities {
+		if entity.Name == entityName {
+			for _, field := range entity.Fields {
+				if field.Name == fieldName {
+					return field.Type
+				}
+			}
+		}
+	}
+	return "text" // default
+}
+
+// resolveViewFilter converts a normalized filter to SQL template + param list.
+func (p *Planner) resolveViewFilter(view *normalizer.NormalizedView, sourceAlias string) (string, []string) {
+	if view.Filter == "" {
+		return "", nil
+	}
+
+	// Parse the CEL filter expression back to build SQL
+	// The filter contains field references and param.* references
+	// For now, we do simple string-based resolution
+	filter := view.Filter
+	params := view.Params
+
+	// Replace field references with aliased columns
+	// This is a simplified approach - a proper implementation would walk the AST
+	// For expressions like "(status == \"open\")" or "(org == param.org_id)"
+	// we need to prefix field names with the source alias
+
+	// Build parameterized SQL
+	paramIndex := 1
+	for _, paramName := range params {
+		placeholder := fmt.Sprintf("param.%s", paramName)
+		positional := fmt.Sprintf("$%d", paramIndex)
+		filter = strings.ReplaceAll(filter, placeholder, positional)
+		paramIndex++
+	}
+
+	// Convert CEL operators to SQL
+	filter = strings.ReplaceAll(filter, "==", "=")
+	filter = strings.ReplaceAll(filter, "&&", "AND")
+	filter = strings.ReplaceAll(filter, "||", "OR")
+
+	return filter, params
+}
+
+// resolveViewSortColumn resolves a sort field name to a SQL column expression.
+func (p *Planner) resolveViewSortColumn(field, sourceAlias string, joinMap map[string]*ResolvedViewJoin) string {
+	parts := strings.Split(field, ".")
+	if len(parts) == 1 {
+		return fmt.Sprintf("%s.%s", sourceAlias, field)
+	}
+	if len(parts) == 2 {
+		joinAlias := fmt.Sprintf("j_%s", parts[0])
+		if _, exists := joinMap[joinAlias]; exists {
+			return fmt.Sprintf("%s.%s", joinAlias, parts[1])
+		}
+	}
+	return fmt.Sprintf("%s.%s", sourceAlias, field)
+}
+
+func (p *Planner) calculateViewDependencies(view *normalizer.NormalizedView, joinMap map[string]*ResolvedViewJoin) []string {
 	deps := make(map[string]bool)
 	deps[view.Source] = true
 
-	// Check if any fields traverse relations
+	// Add entities from joins
 	for _, field := range view.Fields {
-		// If field contains ".", it's a path that may reference another entity
-		_ = field
+		parts := strings.Split(field, ".")
+		if len(parts) >= 2 {
+			relName := parts[0]
+			relKey := fmt.Sprintf("%s.%s", view.Source, relName)
+			if rel, exists := p.scope.Relations[relKey]; exists {
+				deps[rel.ToEntity] = true
+			}
+		}
 	}
 
 	var result []string
@@ -277,21 +496,6 @@ func (p *Planner) calculateViewDependencies(view *normalizer.NormalizedView) []s
 	}
 	sort.Strings(result)
 	return result
-}
-
-func (p *Planner) generateViewQuery(view *normalizer.NormalizedView) string {
-	if len(view.Fields) == 0 {
-		return fmt.Sprintf("SELECT * FROM %s", p.tableName(view.Source))
-	}
-
-	fields := make([]string, len(view.Fields))
-	for i, f := range view.Fields {
-		fields[i] = f
-	}
-
-	return fmt.Sprintf("SELECT %s FROM %s",
-		joinStrings(fields, ", "),
-		p.tableName(view.Source))
 }
 
 func (p *Planner) planAccess(plan *Plan) {
