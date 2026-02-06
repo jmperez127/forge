@@ -452,6 +452,7 @@ func (c *Config) ResolveSecrets() {
 	c.Email.Password = resolveEnvValue(c.Email.Password)
 	c.Jobs.URL = resolveEnvValue(c.Jobs.URL)
 	c.Auth.JWT.Secret = resolveEnvValue(c.Auth.JWT.Secret)
+	c.Security.Turnstile.SiteKey = resolveEnvValue(c.Security.Turnstile.SiteKey)
 	c.Security.Turnstile.SecretKey = resolveEnvValue(c.Security.Turnstile.SecretKey)
 
 	// Resolve OAuth provider secrets
