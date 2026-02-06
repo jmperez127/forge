@@ -3,10 +3,12 @@
 
 hook Ticket.after_create {
   enqueue notify_agents
+  enqueue log_ticket_created
 }
 
 hook Ticket.after_update {
   enqueue notify_author
+  enqueue log_ticket_updated
 }
 
 hook Comment.after_create {

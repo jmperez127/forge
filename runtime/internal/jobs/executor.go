@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,6 +22,7 @@ type Job struct {
 	Name         string         // Job name from artifact (e.g., "notify_agents")
 	Capability   string         // Effect to execute (e.g., "email.send")
 	Data         map[string]any // Data from needs clause
+	TargetEntity string         // Entity this job creates (empty for non-entity jobs)
 	ScheduledAt  time.Time      // When the job was enqueued
 	Attempts     int            // Number of execution attempts
 	MaxAttempts  int            // Maximum retry attempts
@@ -264,10 +266,23 @@ func (e *Executor) EnqueueFromHook(jobNames []string, entityData map[string]any,
 			capability = schema.Capabilities[0]
 		}
 
+		data := entityData
+
+		// If this job has a creates clause (TargetEntity + FieldMappings),
+		// resolve field mappings and set up the entity.create data envelope.
+		if schema.TargetEntity != "" && len(schema.FieldMappings) > 0 {
+			fieldValues := resolveFieldMappings(schema.FieldMappings, entityData)
+			data = map[string]any{
+				"_target_table": entityToTableName(schema.TargetEntity),
+				"_field_values": fieldValues,
+			}
+		}
+
 		job := &Job{
-			Name:       jobName,
-			Capability: capability,
-			Data:       entityData,
+			Name:         jobName,
+			Capability:   capability,
+			Data:         data,
+			TargetEntity: schema.TargetEntity,
 		}
 
 		if err := e.Enqueue(job); err != nil {
@@ -277,11 +292,75 @@ func (e *Executor) EnqueueFromHook(jobNames []string, entityData map[string]any,
 	return nil
 }
 
+// resolveFieldMappings evaluates field mapping expressions against entity data.
+// Supported expressions:
+//   - String literals (quoted with "): used as-is (quotes stripped)
+//   - "input.fieldname" or "data.fieldname": looks up fieldname in entityData
+//   - "now()": replaced with current UTC timestamp (RFC 3339)
+//   - Other identifiers: passed through as-is
+func resolveFieldMappings(mappings map[string]string, entityData map[string]any) map[string]any {
+	result := make(map[string]any, len(mappings))
+	for field, expr := range mappings {
+		result[field] = resolveFieldExpr(expr, entityData)
+	}
+	return result
+}
+
+// resolveFieldExpr evaluates a single field mapping expression.
+func resolveFieldExpr(expr string, entityData map[string]any) any {
+	// String literal: starts and ends with double quotes
+	if len(expr) >= 2 && expr[0] == '"' && expr[len(expr)-1] == '"' {
+		return expr[1 : len(expr)-1]
+	}
+
+	// input.fieldname: look up in entity data
+	if strings.HasPrefix(expr, "input.") {
+		fieldName := expr[len("input."):]
+		if val, ok := entityData[fieldName]; ok {
+			return val
+		}
+		return nil
+	}
+
+	// data.fieldname: look up in entity data (compiler emits "data." prefix
+	// because "input" is a keyword token in the FORGE lexer)
+	if strings.HasPrefix(expr, "data.") {
+		fieldName := expr[len("data."):]
+		if val, ok := entityData[fieldName]; ok {
+			return val
+		}
+		return nil
+	}
+
+	// now(): current timestamp
+	if expr == "now()" {
+		return time.Now().UTC().Format(time.RFC3339)
+	}
+
+	// Other identifiers: return as-is
+	return expr
+}
+
+// entityToTableName converts a PascalCase entity name to a snake_case plural
+// SQL table name. For example: "AuditLog" -> "audit_logs", "Ticket" -> "tickets".
+func entityToTableName(entity string) string {
+	var result strings.Builder
+	for i, r := range entity {
+		if i > 0 && r >= 'A' && r <= 'Z' {
+			result.WriteByte('_')
+		}
+		result.WriteRune(r)
+	}
+	return strings.ToLower(result.String()) + "s"
+}
+
 // JobSchema mirrors the artifact's job schema for use by the executor.
 type JobSchema struct {
-	Name         string
-	InputEntity  string
-	NeedsPath    string
-	NeedsFilter  string
-	Capabilities []string
+	Name          string
+	InputEntity   string
+	NeedsPath     string
+	NeedsFilter   string
+	Capabilities  []string
+	TargetEntity  string
+	FieldMappings map[string]string
 }

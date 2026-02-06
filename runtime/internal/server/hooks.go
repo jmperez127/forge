@@ -44,9 +44,11 @@ func (s *Server) evaluateHooks(entityName, operation string, record map[string]i
 		for _, jobName := range hook.Jobs {
 			if js, ok := artifact.Jobs[jobName]; ok {
 				jobSchemas[jobName] = &jobs.JobSchema{
-					Name:         js.Name,
-					InputEntity:  js.InputEntity,
-					Capabilities: js.Capabilities,
+					Name:          js.Name,
+					InputEntity:   js.InputEntity,
+					Capabilities:  js.Capabilities,
+					TargetEntity:  js.TargetEntity,
+					FieldMappings: js.FieldMappings,
 				}
 			}
 		}
@@ -58,6 +60,8 @@ func (s *Server) evaluateHooks(entityName, operation string, record map[string]i
 			entityData[k] = v
 		}
 
+		// EnqueueFromHook handles all field mapping resolution for
+		// entity.create jobs (string literals, input.field refs, now()).
 		if err := s.executor.EnqueueFromHook(hook.Jobs, entityData, jobSchemas); err != nil {
 			s.logger.Error("hook.enqueue_failed",
 				"entity", entityName,

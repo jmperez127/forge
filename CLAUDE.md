@@ -35,6 +35,12 @@ When working on features:
 
 This applies to everything: features, bugs, refactors, doc changes. No work without a ticket.
 
+**CRITICAL: Always update tickets when work completes.** Before committing/pushing:
+- Comment on the issue with a summary of what was implemented
+- Close the issue with `--reason completed`
+- Update the board status to "Done"
+- Never forget this step — it's as important as the code itself
+
 Use `gh` CLI for all board operations:
 ```bash
 gh issue list --repo jmperez127/forge                          # List issues
@@ -370,6 +376,20 @@ Example of what to do when stuck:
 ✅ Right: "FORGE doesn't currently support X. I'll continue with the rest of the app,
           but you'll need to add this construct to FORGE separately."
 ```
+
+---
+
+## Integration Testing with Example Apps
+
+When implementing new compiler or runtime features:
+
+1. **Always test with both example apps** (`projects/helpdesk/` and `projects/chat/`)
+2. **Add a feature that uses the new capability** - Don't just verify compilation; add an actual feature to the app that exercises the new functionality
+3. **Verify compilation**: Run `forge check` and `forge build` on both apps
+4. **Update the app's .forge files** to demonstrate real-world usage of the feature
+5. **Update the React documentation** (`website/src/pages/docs/`) to reflect the new capability
+
+This ensures every feature is battle-tested in real applications, not just unit tests.
 
 ---
 
@@ -963,6 +983,15 @@ job notify_agent {
   input: Ticket
   needs: Ticket.org.members where role == agent
   effect: email.send
+}
+
+# Job with entity creation
+job log_activity {
+  input: Ticket
+  creates: ActivityLog {
+    action: "ticket_created"
+    description: input.subject
+  }
 }
 
 # View

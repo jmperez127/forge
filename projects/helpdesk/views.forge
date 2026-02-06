@@ -35,3 +35,8 @@ view OrganizationMembers {
   source: User
   fields: email, name, role
 }
+
+view ActivityFeed {
+  source: ActivityLog
+  fields: action, description, entity_type, created_at
+}

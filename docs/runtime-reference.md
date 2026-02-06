@@ -907,6 +907,7 @@ Capabilities are provided by registered providers. Built-in providers:
 | `http.put` | generic | HTTP PUT request |
 | `http.delete` | generic | HTTP DELETE request |
 | `http.call` | generic | Generic HTTP request |
+| `entity.create` | entity | Create entity records from job data |
 
 ### Provider Configuration
 
@@ -941,6 +942,49 @@ In development mode, check job status at `/_dev/jobs`:
 # View jobs, hooks, executor status, and provider info
 curl http://localhost:8080/_dev/jobs | jq .
 ```
+
+### Entity Creation from Jobs
+
+Jobs can create new entity records using the `creates:` clause in the `.forge` spec. This is useful for audit logs, activity tracking, or derived data.
+
+**Syntax:**
+
+```text
+job log_activity {
+  input: Ticket
+  creates: ActivityLog {
+    action: "ticket_created"
+    description: input.subject
+    entity_type: "Ticket"
+    timestamp: now()
+  }
+}
+```
+
+**How it works:**
+
+1. The compiler parses the `creates:` clause and emits a `target_entity` and `field_mappings` in the artifact
+2. The `entity.create` capability is automatically added to the job (no need to declare `effect: entity.create`)
+3. The built-in entity provider is registered automatically at startup
+4. At runtime, the job executor resolves field mapping expressions and inserts the new record
+
+**Field mapping expressions:**
+
+| Expression Type | Example | Description |
+|-----------------|---------|-------------|
+| String literal | `"ticket_created"` | Static string value |
+| Input reference | `input.subject` | Field from the triggering entity |
+| Function call | `now()` | Built-in function (currently `now()` for timestamps) |
+
+**Runtime resolution:**
+
+Field mappings are resolved when the job executes. The entity provider:
+1. Reads the `target_entity` from the job definition
+2. Evaluates each field mapping expression against the job's input data
+3. Inserts the new record into the target entity's table
+4. Logs the result (success or failure)
+
+The `entity.create` capability follows the same retry behavior as other capabilities: quadratic backoff with a maximum of 3 attempts.
 
 ---
 

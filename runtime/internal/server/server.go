@@ -11,6 +11,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -21,7 +23,7 @@ import (
 	"github.com/forge-lang/forge/runtime/internal/db"
 	"github.com/forge-lang/forge/runtime/internal/jobs"
 	"github.com/forge-lang/forge/runtime/internal/provider"
-	_ "github.com/forge-lang/forge/runtime/internal/provider/builtin" // register built-in providers
+	"github.com/forge-lang/forge/runtime/internal/provider/builtin"
 	"github.com/forge-lang/forge/runtime/internal/security"
 )
 
@@ -143,9 +145,11 @@ type ViewSchema struct {
 
 // JobSchema represents a job.
 type JobSchema struct {
-	Name         string   `json:"name"`
-	InputEntity  string   `json:"input_entity"`
-	Capabilities []string `json:"capabilities"`
+	Name          string            `json:"name"`
+	InputEntity   string            `json:"input_entity"`
+	Capabilities  []string          `json:"capabilities"`
+	TargetEntity  string            `json:"target_entity,omitempty"`
+	FieldMappings map[string]string `json:"field_mappings,omitempty"`
 }
 
 // HookSchema represents a hook.
@@ -295,6 +299,16 @@ func New(cfg *Config) (*Server, error) {
 		hub:         NewHub(),
 		logger:      logger,
 		executor:    executor,
+	}
+
+	// Wire up the entity provider with the server's database writer.
+	// The entity provider is registered during init() and needs a concrete
+	// EntityWriter implementation to perform INSERT operations from jobs.
+	if ep := registry.GetProvider("entity"); ep != nil {
+		if entityProv, ok := ep.(*builtin.EntityProvider); ok {
+			entityProv.SetWriter(s)
+			logger.Info("entity provider wired with database writer")
+		}
 	}
 
 	// Initialize Turnstile verifier if configured
@@ -494,6 +508,49 @@ func (s *Server) Close() error {
 	}
 	if s.db != nil {
 		return s.db.Close()
+	}
+	return nil
+}
+
+// InsertEntity implements builtin.EntityWriter. It builds a parameterized INSERT
+// statement from the given table and fields and executes it against the server's
+// database. Column order is deterministic (sorted) to produce stable queries.
+func (s *Server) InsertEntity(ctx context.Context, table string, fields map[string]any) error {
+	if len(fields) == 0 {
+		return fmt.Errorf("InsertEntity: no fields provided")
+	}
+
+	// Sort column names for deterministic query ordering.
+	columns := make([]string, 0, len(fields))
+	for col := range fields {
+		columns = append(columns, col)
+	}
+	sort.Strings(columns)
+
+	// Build parameterized INSERT: INSERT INTO table (c1, c2) VALUES ($1, $2)
+	placeholders := make([]string, len(columns))
+	args := make([]any, len(columns))
+	for i, col := range columns {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = fields[col]
+	}
+
+	query := fmt.Sprintf(
+		"INSERT INTO %s (%s) VALUES (%s)",
+		table,
+		strings.Join(columns, ", "),
+		strings.Join(placeholders, ", "),
+	)
+
+	s.logger.Debug("entity.insert",
+		"table", table,
+		"columns", columns,
+		"query", query,
+	)
+
+	_, err := s.db.Exec(ctx, query, args...)
+	if err != nil {
+		return fmt.Errorf("InsertEntity into %s: %w", table, err)
 	}
 	return nil
 }

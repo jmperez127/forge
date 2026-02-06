@@ -272,6 +272,16 @@ func (a *Analyzer) resolveReferences() {
 		if job.Needs != nil {
 			a.validatePath(job.Needs.Path, job.Name.Name)
 		}
+
+		if job.Creates != nil {
+			if _, exists := a.scope.Entities[job.Creates.Entity.Name]; !exists {
+				a.diag.AddError(
+					diag.Range{Start: job.Creates.Entity.Pos(), End: job.Creates.Entity.End()},
+					diag.ErrUndefinedEntity,
+					fmt.Sprintf("undefined target entity %s in job %s creates clause", job.Creates.Entity.Name, job.Name.Name),
+				)
+			}
+		}
 	}
 
 	// Validate hook references

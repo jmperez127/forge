@@ -614,6 +614,19 @@ func (p *Parser) parseJobDecl() *ast.JobDecl {
 			}
 			p.nextToken()
 			decl.Effect = p.parsePathExpr()
+
+		case token.IDENT:
+			if p.curToken.Literal == "creates" {
+				if !p.expectPeek(token.COLON) {
+					p.nextToken()
+					continue
+				}
+				if !p.expectPeek(token.IDENT) {
+					p.nextToken()
+					continue
+				}
+				decl.Creates = p.parseJobCreatesClause()
+			}
 		}
 		p.nextToken()
 	}
@@ -630,6 +643,44 @@ func (p *Parser) parseNeedsClause() *ast.NeedsClause {
 		p.nextToken()
 		p.nextToken()
 		clause.Where = p.parseExpression(LOWEST)
+	}
+
+	clause.EndPos = p.curToken.End
+	return clause
+}
+
+// parseJobCreatesClause parses: Entity { field: expr, ... }
+// Called after consuming "creates:" and the entity name IDENT.
+func (p *Parser) parseJobCreatesClause() *ast.JobCreatesClause {
+	clause := &ast.JobCreatesClause{StartPos: p.curToken.Pos}
+	clause.Entity = p.parseIdent()
+
+	if !p.expectPeek(token.LBRACE) {
+		return clause
+	}
+
+	p.nextToken()
+
+	for !p.curTokenIs(token.RBRACE) && !p.curTokenIs(token.EOF) {
+		if p.curTokenIs(token.IDENT) || p.curToken.Type.IsKeyword() {
+			mapping := &ast.FieldMapping{StartPos: p.curToken.Pos}
+			mapping.Field = &ast.Ident{
+				Name:     p.curToken.Literal,
+				StartPos: p.curToken.Pos,
+				EndPos:   p.curToken.End,
+			}
+
+			if !p.expectPeek(token.COLON) {
+				p.nextToken()
+				continue
+			}
+
+			p.nextToken()
+			mapping.Value = p.parseExpression(LOWEST)
+			mapping.EndPos = p.curToken.End
+			clause.Mappings = append(clause.Mappings, mapping)
+		}
+		p.nextToken()
 	}
 
 	clause.EndPos = p.curToken.End

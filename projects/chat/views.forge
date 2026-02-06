@@ -25,3 +25,8 @@ view MemberList {
   source: User
   fields: id, email, display_name, avatar_url, role
 }
+
+view ActivityFeed {
+  source: ActivityLog
+  fields: action, description, entity_type, created_at
+}

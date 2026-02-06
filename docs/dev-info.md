@@ -434,6 +434,18 @@ Background jobs, hooks, executor status, and provider info:
       "needs": "Ticket.org.members where role == agent",
       "capabilities": ["email.send"],
       "triggered_by": ["Ticket_after_create"]
+    },
+    "log_ticket_created": {
+      "name": "log_ticket_created",
+      "input_entity": "Ticket",
+      "capabilities": ["entity.create"],
+      "target_entity": "ActivityLog",
+      "field_mappings": {
+        "action": "\"ticket_created\"",
+        "description": "input.subject",
+        "entity_type": "\"Ticket\""
+      },
+      "triggered_by": ["Ticket_after_create"]
     }
   },
   "hooks": [
@@ -441,7 +453,7 @@ Background jobs, hooks, executor status, and provider info:
       "entity": "Ticket",
       "timing": "after",
       "operation": "create",
-      "jobs": ["notify_agents"]
+      "jobs": ["notify_agents", "log_ticket_created"]
     },
     {
       "entity": "Ticket",
@@ -457,8 +469,8 @@ Background jobs, hooks, executor status, and provider info:
     "queue_length": 0
   },
   "providers": {
-    "registered": ["email", "generic"],
-    "capabilities": ["email.send", "http.call", "http.delete", "http.get", "http.post", "http.put"]
+    "registered": ["email", "entity", "generic"],
+    "capabilities": ["email.send", "entity.create", "http.call", "http.delete", "http.get", "http.post", "http.put"]
   }
 }
 ```

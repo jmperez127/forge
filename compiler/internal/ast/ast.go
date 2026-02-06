@@ -224,6 +224,7 @@ type JobDecl struct {
 	Input      *Ident
 	Needs      *NeedsClause
 	Effect     *PathExpr
+	Creates    *JobCreatesClause
 	StartPos   token.Position
 	EndPos     token.Position
 }
@@ -244,6 +245,39 @@ type NeedsClause struct {
 func (c *NeedsClause) node()              {}
 func (c *NeedsClause) Pos() token.Position { return c.StartPos }
 func (c *NeedsClause) End() token.Position { return c.EndPos }
+
+// JobCreatesClause represents a creates clause in a job.
+// It specifies an entity to create and field value mappings.
+//
+// Example:
+//
+//	creates: ProjectActivity {
+//	    activity_type: "deed_created"
+//	    title: input.description
+//	    occurred_at: now()
+//	}
+type JobCreatesClause struct {
+	Entity   *Ident          // Target entity to create
+	Mappings []*FieldMapping // Field value mappings
+	StartPos token.Position
+	EndPos   token.Position
+}
+
+func (c *JobCreatesClause) node()              {}
+func (c *JobCreatesClause) Pos() token.Position { return c.StartPos }
+func (c *JobCreatesClause) End() token.Position { return c.EndPos }
+
+// FieldMapping represents a field-to-expression mapping in a creates clause.
+type FieldMapping struct {
+	Field    *Ident // Target field name
+	Value    Expr   // Expression for the value (string lit, input.field, now(), etc.)
+	StartPos token.Position
+	EndPos   token.Position
+}
+
+func (m *FieldMapping) node()              {}
+func (m *FieldMapping) Pos() token.Position { return m.StartPos }
+func (m *FieldMapping) End() token.Position { return m.EndPos }
 
 // HookDecl represents a hook declaration.
 type HookDecl struct {

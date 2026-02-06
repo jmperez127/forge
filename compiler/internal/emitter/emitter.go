@@ -102,11 +102,13 @@ type ViewSchema struct {
 
 // JobSchema represents a job in the artifact.
 type JobSchema struct {
-	Name         string   `json:"name"`
-	InputEntity  string   `json:"input_entity"`
-	NeedsPath    string   `json:"needs_path,omitempty"`
-	NeedsFilter  string   `json:"needs_filter,omitempty"`
-	Capabilities []string `json:"capabilities"`
+	Name          string            `json:"name"`
+	InputEntity   string            `json:"input_entity"`
+	NeedsPath     string            `json:"needs_path,omitempty"`
+	NeedsFilter   string            `json:"needs_filter,omitempty"`
+	Capabilities  []string          `json:"capabilities"`
+	TargetEntity  string            `json:"target_entity,omitempty"`
+	FieldMappings map[string]string `json:"field_mappings,omitempty"`
 }
 
 // HookSchema represents a hook in the artifact.
@@ -302,13 +304,18 @@ func (e *Emitter) generateArtifact() *Artifact {
 
 	// Generate job schemas
 	for _, job := range e.normalized.Jobs {
-		artifact.Jobs[job.Name] = &JobSchema{
+		js := &JobSchema{
 			Name:         job.Name,
 			InputEntity:  job.InputType,
 			NeedsPath:    job.NeedsPath,
 			NeedsFilter:  job.NeedsFilter,
 			Capabilities: job.Capabilities,
 		}
+		if job.TargetEntity != "" {
+			js.TargetEntity = job.TargetEntity
+			js.FieldMappings = job.FieldMappings
+		}
+		artifact.Jobs[job.Name] = js
 	}
 
 	// Generate hook schemas

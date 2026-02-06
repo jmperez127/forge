@@ -30,3 +30,10 @@ entity Tag {
   name: string unique
   color: string
 }
+
+entity ActivityLog {
+  action: string
+  description: string
+  entity_type: string
+  entity_id: string
+}

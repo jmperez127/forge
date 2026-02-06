@@ -695,3 +695,173 @@ func TestEnqueueAfterStopFullQueue(t *testing.T) {
 		t.Errorf("expected 'shutting down' error, got %q", err.Error())
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Field mapping resolution tests
+// ---------------------------------------------------------------------------
+
+func TestResolveFieldExpr(t *testing.T) {
+	entityData := map[string]any{
+		"id":      "ticket_123",
+		"subject": "Help needed",
+		"status":  "open",
+	}
+
+	tests := []struct {
+		name     string
+		expr     string
+		expected any
+	}{
+		{"string literal", `"ticket_created"`, "ticket_created"},
+		{"empty string literal", `""`, ""},
+		{"input.field lookup", "input.subject", "Help needed"},
+		{"input.field missing", "input.nonexistent", nil},
+		{"data.field lookup", "data.subject", "Help needed"},
+		{"data.field missing", "data.nonexistent", nil},
+		{"data.id lookup", "data.id", "ticket_123"},
+		{"now() function", "now()", nil}, // checked separately for format
+		{"bare identifier", "some_value", "some_value"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := resolveFieldExpr(tt.expr, entityData)
+			if tt.expr == "now()" {
+				// Verify it returns a valid RFC3339 timestamp
+				s, ok := result.(string)
+				if !ok {
+					t.Fatalf("now() should return string, got %T", result)
+				}
+				if _, err := time.Parse(time.RFC3339, s); err != nil {
+					t.Errorf("now() returned invalid RFC3339: %q", s)
+				}
+				return
+			}
+			if result != tt.expected {
+				t.Errorf("resolveFieldExpr(%q) = %v, want %v", tt.expr, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestResolveFieldMappings(t *testing.T) {
+	entityData := map[string]any{
+		"id":      "ticket_123",
+		"subject": "Help needed",
+	}
+
+	mappings := map[string]string{
+		"action":      `"ticket_created"`,
+		"description": "data.subject",
+		"entity_id":   "input.id",
+		"entity_type": `"Ticket"`,
+	}
+
+	result := resolveFieldMappings(mappings, entityData)
+
+	if result["action"] != "ticket_created" {
+		t.Errorf("action = %v, want 'ticket_created'", result["action"])
+	}
+	if result["description"] != "Help needed" {
+		t.Errorf("description = %v, want 'Help needed'", result["description"])
+	}
+	if result["entity_id"] != "ticket_123" {
+		t.Errorf("entity_id = %v, want 'ticket_123'", result["entity_id"])
+	}
+	if result["entity_type"] != "Ticket" {
+		t.Errorf("entity_type = %v, want 'Ticket'", result["entity_type"])
+	}
+}
+
+func TestEntityToTableName(t *testing.T) {
+	tests := []struct {
+		entity   string
+		expected string
+	}{
+		{"Ticket", "tickets"},
+		{"AuditLog", "audit_logs"},
+		{"User", "users"},
+		{"ActivityLog", "activity_logs"},
+		{"HTTPRequest", "h_t_t_p_requests"}, // consecutive caps
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.entity, func(t *testing.T) {
+			result := entityToTableName(tt.entity)
+			if result != tt.expected {
+				t.Errorf("entityToTableName(%q) = %q, want %q", tt.entity, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestEnqueueFromHookEntityCreate(t *testing.T) {
+	var capturedData map[string]any
+	mock := &mockProvider{
+		name:         "entity",
+		capabilities: []string{"entity.create"},
+		executeFn: func(ctx context.Context, capability string, data map[string]any) error {
+			capturedData = data
+			return nil
+		},
+	}
+	reg := setupRegistry(mock)
+
+	ex := NewExecutor(reg, newTestLogger(), 2)
+	ex.Start()
+	defer ex.Stop()
+
+	jobSchemas := map[string]*JobSchema{
+		"log_activity": {
+			Name:         "log_activity",
+			InputEntity:  "Ticket",
+			Capabilities: []string{"entity.create"},
+			TargetEntity: "AuditLog",
+			FieldMappings: map[string]string{
+				"action":      `"ticket_created"`,
+				"description": "data.subject",
+				"entity_id":   "data.id",
+			},
+		},
+	}
+
+	entityData := map[string]any{
+		"id":      "ticket_999",
+		"subject": "Broken login",
+	}
+
+	err := ex.EnqueueFromHook([]string{"log_activity"}, entityData, jobSchemas)
+	if err != nil {
+		t.Fatalf("EnqueueFromHook failed: %v", err)
+	}
+
+	results := drainResults(ex.Results(), 1, 3*time.Second)
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if !results[0].Success {
+		t.Errorf("expected success, got error: %s", results[0].Error)
+	}
+
+	// Verify the data envelope passed to the provider
+	if capturedData == nil {
+		t.Fatal("provider was not called")
+	}
+	table, _ := capturedData["_target_table"].(string)
+	if table != "audit_logs" {
+		t.Errorf("_target_table = %q, want 'audit_logs'", table)
+	}
+	fieldValues, ok := capturedData["_field_values"].(map[string]any)
+	if !ok {
+		t.Fatal("_field_values missing or wrong type")
+	}
+	if fieldValues["action"] != "ticket_created" {
+		t.Errorf("action = %v, want 'ticket_created'", fieldValues["action"])
+	}
+	if fieldValues["description"] != "Broken login" {
+		t.Errorf("description = %v, want 'Broken login'", fieldValues["description"])
+	}
+	if fieldValues["entity_id"] != "ticket_999" {
+		t.Errorf("entity_id = %v, want 'ticket_999'", fieldValues["entity_id"])
+	}
+}

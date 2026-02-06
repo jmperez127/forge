@@ -17,3 +17,12 @@ job create_default_channel {
   needs: Workspace.owner
   effect: email.send
 }
+
+job log_message_sent {
+  input: Message
+  creates: ActivityLog {
+    action: "message_sent"
+    description: data.content
+    entity_type: "Message"
+  }
+}

@@ -18,3 +18,21 @@ job notify_ticket_participants {
   needs: Comment.ticket.org.members
   effect: email.send
 }
+
+job log_ticket_created {
+  input: Ticket
+  creates: ActivityLog {
+    action: "ticket_created"
+    description: data.subject
+    entity_type: "Ticket"
+  }
+}
+
+job log_ticket_updated {
+  input: Ticket
+  creates: ActivityLog {
+    action: "ticket_updated"
+    description: data.subject
+    entity_type: "Ticket"
+  }
+}

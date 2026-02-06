@@ -2,6 +2,56 @@
 
 > Active implementation log. All engineers must read this before starting and update it when completing work.
 
+## Feature: Entity Creation from Jobs (`creates:` clause)
+
+**Started**: 2026-02-06
+**Status**: COMPLETE
+**Completed**: 2026-02-06
+**Issue**: GitHub Issue #12
+
+### Summary
+Jobs can now create new entity records using the `creates:` clause. This enables audit logs, activity tracking, and derived data creation from background jobs.
+
+### Changes
+
+**Compiler (5 files modified):**
+- `ast/ast.go` -- Added `JobCreatesClause` and `FieldMapping` AST types, `Creates` field on `JobDecl`
+- `parser/parser.go` -- Parse `creates:` clause with entity name and field mappings
+- `analyzer/analyzer.go` -- Validate target entity exists (E0301 if missing)
+- `normalizer/normalizer.go` -- Normalize creates clause, auto-add `entity.create` capability, convert field mapping expressions to CEL strings
+- `emitter/emitter.go` -- Emit `target_entity` and `field_mappings` in artifact JSON
+
+**Runtime (4 files modified, 2 created):**
+- `jobs/executor.go` -- Added `resolveFieldMappings`, `resolveFieldExpr` (handles string literals, `input.`/`data.` field refs, `now()`), `entityToTableName`; `EnqueueFromHook` resolves entity.create data envelopes
+- `provider/builtin/entity.go` -- NEW: `EntityProvider` with `entity.create` capability, `EntityWriter` interface, registered via `init()`
+- `server/server.go` -- `InsertEntity` method (parameterized SQL), entity provider wiring in `New()`
+- `server/hooks.go` -- Cleaned up: removed incorrect enrichment block, passes TargetEntity/FieldMappings via job schema to executor
+- `server/entity_create_test.go` -- NEW: 8 integration tests
+
+**Tests added:**
+- Parser: 4 sub-cases for creates clause parsing
+- Analyzer: 2 tests (valid entity, undefined entity)
+- Normalizer: 3 sub-cases (mappings, dual capabilities, empty mappings)
+- Full pipeline: 1 end-to-end compile test
+- Executor: 4 tests (resolveFieldExpr, resolveFieldMappings, entityToTableName, EnqueueFromHookEntityCreate)
+- Server integration: 8 tests (hook enqueue, field mapping resolution, provider data, mixed capabilities, no match, concurrent, missing field, missing entity)
+
+**Example apps updated:**
+- Helpdesk: Added `ActivityLog` entity, `log_ticket_created`/`log_ticket_updated` jobs with creates clause, hooks, access, relations, view
+- Chat: Added `ActivityLog` entity, `log_message_sent` job with creates clause, hooks, access, relations, view
+
+**Documentation updated:**
+- `website/src/pages/docs/hooks.tsx` -- Entity creation section, capabilities table, data scoping update
+- `CLAUDE.md` -- Creates clause in quick reference, integration testing section
+- `docs/runtime-reference.md` -- Entity creation docs, field mapping expressions table
+- `docs/dev-info.md` -- Updated `/_dev/jobs` example with entity.create job
+- `CHANGELOG.md` -- Added entity creation entry
+
+### Key Design Note
+`input` is a keyword token in the FORGE lexer, so `.forge` files use `data.subject` (not `input.subject`) in field mapping expressions. The runtime handles both `input.` and `data.` prefixes.
+
+---
+
 ## Feature: Job Execution Pipeline (Phase 1 - Synchronous MVP)
 
 **Started**: 2026-02-05

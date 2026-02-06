@@ -20,3 +20,8 @@ access Comment {
   read: user in ticket.org.members
   write: user == author or user.role == agent
 }
+
+access ActivityLog {
+  read: user in org.members
+  write: user in org.members
+}

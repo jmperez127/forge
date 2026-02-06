@@ -50,3 +50,9 @@ entity WorkspaceSettings {
   allow_guests: bool = false
   message_retention_days: int = 0
 }
+
+entity ActivityLog {
+  action: string
+  description: string
+  entity_type: string
+}

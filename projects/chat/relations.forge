@@ -20,3 +20,5 @@ relation Reaction.user -> User
 relation UserPreferences.user -> User
 
 relation WorkspaceSettings.workspace -> Workspace
+
+relation ActivityLog.workspace -> Workspace

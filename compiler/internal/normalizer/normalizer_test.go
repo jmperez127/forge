@@ -248,6 +248,171 @@ relation Ticket.assignee -> User
 	}
 }
 
+func TestNormalizeJob_CreatesClause(t *testing.T) {
+	tests := []struct {
+		name               string
+		source             string
+		jobName            string
+		wantTargetEntity   string
+		wantFieldMappings  map[string]string
+		wantCapabilities   []string
+	}{
+		{
+			name: "job with creates clause normalizes target entity and field mappings",
+			source: `
+app Test {}
+
+entity Ticket {
+	subject: string
+}
+
+entity AuditLog {
+	action: string
+	description: string
+}
+
+job log_activity {
+	input: Ticket
+	creates: AuditLog {
+		action: "ticket_created"
+		description: data.subject
+	}
+}
+`,
+			jobName:          "log_activity",
+			wantTargetEntity: "AuditLog",
+			wantFieldMappings: map[string]string{
+				"action":      `"ticket_created"`,
+				"description": "data.subject",
+			},
+			wantCapabilities: []string{"entity.create"},
+		},
+		{
+			name: "creates clause auto-adds entity.create capability alongside effect",
+			source: `
+app Test {}
+
+entity Order {
+	total: int
+}
+
+entity OrderLog {
+	status: string
+}
+
+job process_order {
+	input: Order
+	creates: OrderLog {
+		status: "processed"
+	}
+	effect: email.send
+}
+`,
+			jobName:          "process_order",
+			wantTargetEntity: "OrderLog",
+			wantFieldMappings: map[string]string{
+				"status": `"processed"`,
+			},
+			wantCapabilities: []string{"email.send", "entity.create"},
+		},
+		{
+			name: "creates clause with no mappings",
+			source: `
+app Test {}
+
+entity Ticket {
+	subject: string
+}
+
+entity AuditLog {
+	action: string
+}
+
+job create_empty {
+	input: Ticket
+	creates: AuditLog {
+	}
+}
+`,
+			jobName:           "create_empty",
+			wantTargetEntity:  "AuditLog",
+			wantFieldMappings: map[string]string{},
+			wantCapabilities:  []string{"entity.create"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Parse
+			p := parser.New(tt.source, "test.forge")
+			file := p.ParseFile()
+			if p.Diagnostics().HasErrors() {
+				t.Fatalf("parse errors: %v", p.Diagnostics().Errors())
+			}
+
+			// Analyze
+			a := analyzer.New(file)
+			diags := a.Analyze()
+			if diags.HasErrors() {
+				t.Fatalf("analysis errors: %v", diags.Errors())
+			}
+
+			// Normalize
+			n := New(file, a.Scope())
+			output, normDiags := n.Normalize()
+			if normDiags.HasErrors() {
+				t.Fatalf("normalization errors: %v", normDiags.Errors())
+			}
+
+			// Find the job
+			var found *NormalizedJob
+			for _, job := range output.Jobs {
+				if job.Name == tt.jobName {
+					found = job
+					break
+				}
+			}
+			if found == nil {
+				t.Fatalf("job %q not found in normalized output", tt.jobName)
+			}
+
+			// Verify target entity
+			if found.TargetEntity != tt.wantTargetEntity {
+				t.Errorf("TargetEntity = %q, want %q", found.TargetEntity, tt.wantTargetEntity)
+			}
+
+			// Verify field mappings
+			if len(found.FieldMappings) != len(tt.wantFieldMappings) {
+				t.Errorf("FieldMappings count = %d, want %d", len(found.FieldMappings), len(tt.wantFieldMappings))
+			}
+			for key, wantVal := range tt.wantFieldMappings {
+				gotVal, ok := found.FieldMappings[key]
+				if !ok {
+					t.Errorf("FieldMappings missing key %q", key)
+					continue
+				}
+				if gotVal != wantVal {
+					t.Errorf("FieldMappings[%q] = %q, want %q", key, gotVal, wantVal)
+				}
+			}
+
+			// Verify capabilities contain required entries (order-independent)
+			for _, wantCap := range tt.wantCapabilities {
+				capFound := false
+				for _, gotCap := range found.Capabilities {
+					if gotCap == wantCap {
+						capFound = true
+						break
+					}
+				}
+				if !capFound {
+					t.Errorf("expected capability %q not found in %v", wantCap, found.Capabilities)
+				}
+			}
+		})
+	}
+}
+
 func TestImplicitTimestampsAreTimestampWithTimeZone(t *testing.T) {
 	source := `
 app Test {}

@@ -299,3 +299,76 @@ entity User {
 		t.Errorf("expected 2 enum values, got %d", len(role.EnumValues))
 	}
 }
+
+func TestAnalyzer_JobCreatesValidEntity(t *testing.T) {
+	input := `
+entity Ticket {
+	subject: string
+}
+
+entity AuditLog {
+	action: string
+	description: string
+}
+
+job log_activity {
+	input: Ticket
+	creates: AuditLog {
+		action: "ticket_created"
+		description: data.subject
+	}
+}
+`
+
+	file, parseDiags := parser.Parse(input, "test.forge")
+	if parseDiags.HasErrors() {
+		t.Fatalf("parse errors: %v", parseDiags.Errors())
+	}
+
+	_, analyzerDiags := Analyze(file)
+
+	if analyzerDiags.HasErrors() {
+		for _, d := range analyzerDiags.Errors() {
+			t.Logf("error: %v", d)
+		}
+		t.Fatal("expected no errors for job creates referencing valid entity")
+	}
+}
+
+func TestAnalyzer_JobCreatesUndefinedEntity(t *testing.T) {
+	input := `
+entity Ticket {
+	subject: string
+}
+
+job log_activity {
+	input: Ticket
+	creates: NonExistentEntity {
+		action: "ticket_created"
+	}
+}
+`
+
+	file, parseDiags := parser.Parse(input, "test.forge")
+	if parseDiags.HasErrors() {
+		t.Fatalf("parse errors: %v", parseDiags.Errors())
+	}
+
+	_, analyzerDiags := Analyze(file)
+
+	if !analyzerDiags.HasErrors() {
+		t.Fatal("expected error for job creates referencing undefined entity")
+	}
+
+	found := false
+	for _, d := range analyzerDiags.Errors() {
+		if d.Code == diag.ErrUndefinedEntity {
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		t.Error("expected diag.ErrUndefinedEntity for undefined entity in creates clause")
+	}
+}

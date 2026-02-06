@@ -67,11 +67,13 @@ type NormalizedAction struct {
 
 // NormalizedJob contains normalized job information.
 type NormalizedJob struct {
-	Name         string
-	InputType    string
-	NeedsPath    string
-	NeedsFilter  string // CEL expression
-	Capabilities []string
+	Name          string
+	InputType     string
+	NeedsPath     string
+	NeedsFilter   string // CEL expression
+	Capabilities  []string
+	TargetEntity  string            // Entity to create (from creates clause)
+	FieldMappings map[string]string // field name -> expression string
 }
 
 // NormalizedView contains normalized view information.
@@ -435,6 +437,15 @@ func (n *Normalizer) normalizeJobs(out *Output) {
 
 		if job.Effect != nil {
 			nj.Capabilities = append(nj.Capabilities, job.Effect.String())
+		}
+
+		if job.Creates != nil {
+			nj.TargetEntity = job.Creates.Entity.Name
+			nj.Capabilities = append(nj.Capabilities, "entity.create")
+			nj.FieldMappings = make(map[string]string)
+			for _, m := range job.Creates.Mappings {
+				nj.FieldMappings[m.Field.Name] = n.exprToCEL(m.Value)
+			}
 		}
 
 		out.Jobs = append(out.Jobs, nj)

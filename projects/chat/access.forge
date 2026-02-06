@@ -40,3 +40,8 @@ access WorkspaceSettings {
   read: true
   write: true
 }
+
+access ActivityLog {
+  read: user in workspace.members
+  write: user in workspace.members
+}

@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Entity creation from jobs (`creates:` clause)
+  - New `entity.create` capability for creating records from background jobs
+  - Field mapping expressions support string literals, input references, and function calls
+  - Built-in entity provider registered automatically
 - Job execution pipeline (Phase 1 - synchronous in-process)
   - Hook evaluation after entity mutations (create/update/delete)
   - In-process job executor with configurable worker pool

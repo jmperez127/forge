@@ -16,3 +16,6 @@ relation Comment.author -> User
 
 # Ticket tags (many-to-many)
 relation Ticket.tags -> Tag many
+
+# Activity logs belong to org
+relation ActivityLog.org -> Organization

@@ -4,6 +4,15 @@
 
 ---
 
+## Feature: Entity Creation from Jobs (`creates:` clause)
+
+**Completed**: 2026-02-06
+**Issue**: GitHub Issue #12
+
+Jobs can create new entity records using `creates:` clause in `.forge` files. Enables audit logs, activity tracking, and derived data. Full compiler pipeline (parse, analyze, normalize, emit) + runtime (field mapping resolution, EntityProvider, parameterized SQL INSERT). 22 new tests across compiler and runtime. Both helpdesk and chat example apps updated with ActivityLog entities.
+
+---
+
 ## Feature: Job Execution Pipeline (Phase 1 - Synchronous MVP)
 
 **Completed**: 2026-02-06

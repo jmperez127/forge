@@ -556,6 +556,199 @@ func TestParser_WebhookDecl(t *testing.T) {
 	}
 }
 
+func TestParser_JobDeclWithCreatesClause(t *testing.T) {
+	tests := []struct {
+		name          string
+		input         string
+		jobName       string
+		inputName     string
+		entityName    string
+		mappingCount  int
+		hasEffect     bool
+		effectPath    string
+		hasNeeds      bool
+		mappingChecks map[string]func(t *testing.T, val ast.Expr)
+	}{
+		{
+			name: "job with creates clause - string lit, path expr, function call",
+			input: `job log_activity {
+				input: Ticket
+				creates: AuditLog {
+					action: "ticket_created"
+					description: data.subject
+					entity_id: data.id
+					timestamp: now()
+				}
+			}`,
+			jobName:      "log_activity",
+			inputName:    "Ticket",
+			entityName:   "AuditLog",
+			mappingCount: 4,
+			hasEffect:    false,
+			hasNeeds:     false,
+			mappingChecks: map[string]func(t *testing.T, val ast.Expr){
+				"action": func(t *testing.T, val ast.Expr) {
+					strLit, ok := val.(*ast.StringLit)
+					if !ok {
+						t.Fatalf("expected StringLit for 'action', got %T", val)
+					}
+					if strLit.Value != "ticket_created" {
+						t.Errorf("expected 'ticket_created', got %q", strLit.Value)
+					}
+				},
+				"description": func(t *testing.T, val ast.Expr) {
+					path, ok := val.(*ast.PathExpr)
+					if !ok {
+						t.Fatalf("expected PathExpr for 'description', got %T", val)
+					}
+					if path.String() != "data.subject" {
+						t.Errorf("expected 'data.subject', got %q", path.String())
+					}
+				},
+				"entity_id": func(t *testing.T, val ast.Expr) {
+					path, ok := val.(*ast.PathExpr)
+					if !ok {
+						t.Fatalf("expected PathExpr for 'entity_id', got %T", val)
+					}
+					if path.String() != "data.id" {
+						t.Errorf("expected 'data.id', got %q", path.String())
+					}
+				},
+				"timestamp": func(t *testing.T, val ast.Expr) {
+					call, ok := val.(*ast.CallExpr)
+					if !ok {
+						t.Fatalf("expected CallExpr for 'timestamp', got %T", val)
+					}
+					fn, ok := call.Func.(*ast.Ident)
+					if !ok {
+						t.Fatalf("expected Ident for call func, got %T", call.Func)
+					}
+					if fn.Name != "now" {
+						t.Errorf("expected function name 'now', got %q", fn.Name)
+					}
+					if len(call.Args) != 0 {
+						t.Errorf("expected 0 args, got %d", len(call.Args))
+					}
+				},
+			},
+		},
+		{
+			name: "job with creates clause and effect",
+			input: `job process_order {
+				input: Order
+				creates: OrderLog {
+					status: "processed"
+				}
+				effect: email.send
+			}`,
+			jobName:      "process_order",
+			inputName:    "Order",
+			entityName:   "OrderLog",
+			mappingCount: 1,
+			hasEffect:    true,
+			effectPath:   "email.send",
+			hasNeeds:     false,
+		},
+		{
+			name: "job with creates clause only - no effect no needs",
+			input: `job create_audit {
+				input: Ticket
+				creates: AuditEntry {
+					kind: "create"
+				}
+			}`,
+			jobName:      "create_audit",
+			inputName:    "Ticket",
+			entityName:   "AuditEntry",
+			mappingCount: 1,
+			hasEffect:    false,
+			hasNeeds:     false,
+		},
+		{
+			name: "job with empty creates clause - entity but no mappings",
+			input: `job create_empty {
+				input: Ticket
+				creates: AuditLog {
+				}
+			}`,
+			jobName:      "create_empty",
+			inputName:    "Ticket",
+			entityName:   "AuditLog",
+			mappingCount: 0,
+			hasEffect:    false,
+			hasNeeds:     false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			file, diags := Parse(tt.input, "test.forge")
+
+			if diags.HasErrors() {
+				for _, d := range diags.Errors() {
+					t.Logf("error: %s", d)
+				}
+				t.Fatal("unexpected errors during parsing")
+			}
+
+			if len(file.Jobs) != 1 {
+				t.Fatalf("expected 1 job, got %d", len(file.Jobs))
+			}
+
+			job := file.Jobs[0]
+			if job.Name.Name != tt.jobName {
+				t.Errorf("expected job name %q, got %q", tt.jobName, job.Name.Name)
+			}
+
+			if job.Input == nil || job.Input.Name != tt.inputName {
+				t.Errorf("expected input %q, got %v", tt.inputName, job.Input)
+			}
+
+			if job.Creates == nil {
+				t.Fatal("expected creates clause, got nil")
+			}
+
+			if job.Creates.Entity.Name != tt.entityName {
+				t.Errorf("expected creates entity %q, got %q", tt.entityName, job.Creates.Entity.Name)
+			}
+
+			if len(job.Creates.Mappings) != tt.mappingCount {
+				t.Errorf("expected %d mappings, got %d", tt.mappingCount, len(job.Creates.Mappings))
+			}
+
+			if tt.hasEffect {
+				if job.Effect == nil {
+					t.Fatal("expected effect, got nil")
+				}
+				if job.Effect.String() != tt.effectPath {
+					t.Errorf("expected effect %q, got %q", tt.effectPath, job.Effect.String())
+				}
+			} else {
+				if job.Effect != nil {
+					t.Errorf("expected no effect, got %q", job.Effect.String())
+				}
+			}
+
+			if tt.hasNeeds {
+				if job.Needs == nil {
+					t.Fatal("expected needs clause, got nil")
+				}
+			} else {
+				if job.Needs != nil {
+					t.Errorf("expected no needs clause, got %v", job.Needs)
+				}
+			}
+
+			// Check individual mapping types
+			for _, mapping := range job.Creates.Mappings {
+				if check, ok := tt.mappingChecks[mapping.Field.Name]; ok {
+					check(t, mapping.Value)
+				}
+			}
+		})
+	}
+}
+
 func TestParser_WebhookGeneric(t *testing.T) {
 	input := `webhook github_push {
 		provider: generic

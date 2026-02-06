@@ -107,6 +107,52 @@ job sync_to_crm {
 }`}
       />
 
+      <h3 className="text-xl font-bold mt-8 mb-4">Entity Creation</h3>
+
+      <p className="text-muted-foreground mb-4">
+        Jobs can create new entity records using the <code className="text-forge-400">creates:</code> clause.
+        This is useful for audit logs, activity tracking, or any derived data that should be created
+        as a side effect of another operation:
+      </p>
+
+      <CodeBlock
+        code={`job log_activity {
+  input: Ticket
+
+  # Create a new ActivityLog record when this job runs
+  creates: ActivityLog {
+    action: "ticket_created"
+    description: input.subject
+    entity_type: "Ticket"
+    timestamp: now()
+  }
+}
+
+job archive_ticket {
+  input: Ticket
+
+  creates: ArchivedTicket {
+    original_id: input.id
+    subject: input.subject
+    archived_at: now()
+  }
+}`}
+      />
+
+      <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-6 mb-8">
+        <h4 className="font-semibold text-emerald-400 mb-2">How Creates Clause Works</h4>
+        <p className="text-sm text-muted-foreground">
+          The <code className="text-forge-400">creates:</code> clause compiles to an{" "}
+          <code className="text-forge-400">entity.create</code> capability that is automatically
+          added to the job. Field mapping expressions inside the block define how the new record
+          is populated. Supported expressions include string literals ({`"ticket_created"`}),
+          input references (<code className="text-forge-400">input.subject</code>,{" "}
+          <code className="text-forge-400">input.id</code>), and function calls
+          (<code className="text-forge-400">now()</code>). The compiler verifies that the target
+          entity and all referenced fields exist.
+        </p>
+      </div>
+
       <h2 className="text-2xl font-bold mt-8 mb-4">Built-in Capabilities</h2>
 
       <p className="text-muted-foreground mb-4">
@@ -148,10 +194,15 @@ job sync_to_crm {
               <td className="py-3 px-4">generic</td>
               <td className="py-3 px-4">HTTP DELETE request</td>
             </tr>
-            <tr>
+            <tr className="border-b border-border/50">
               <td className="py-3 px-4 font-mono text-forge-400">http.call</td>
               <td className="py-3 px-4">generic</td>
               <td className="py-3 px-4">Generic HTTP request</td>
+            </tr>
+            <tr>
+              <td className="py-3 px-4 font-mono text-forge-400">entity.create</td>
+              <td className="py-3 px-4">entity</td>
+              <td className="py-3 px-4">Create entity records from job data</td>
             </tr>
           </tbody>
         </table>
@@ -166,7 +217,10 @@ job sync_to_crm {
       <h2 className="text-2xl font-bold mb-4">Data Scoping</h2>
 
       <p className="text-muted-foreground mb-4">
-        The <code className="text-forge-400">needs</code> declaration controls what data the job receives:
+        The <code className="text-forge-400">needs</code> declaration controls what data the job receives.
+        Field mappings in the <code className="text-forge-400">creates:</code> clause also use scoped data—expressions
+        like <code className="text-forge-400">input.subject</code> can only reference fields available from
+        the input entity:
       </p>
 
       <CodeBlock
@@ -426,9 +480,11 @@ job cleanup_expired_sessions {
         <h4 className="font-semibold text-forge-400 mb-2">Current Implementation</h4>
         <p className="text-sm text-muted-foreground">
           Jobs currently execute in-process using a channel-based worker pool. The entity
-          record data is passed directly to the job. This is reliable for most use cases
-          but jobs are lost if the server restarts while they're queued. Persistent queues
-          and needs resolution are coming in Phase 2 and 3.
+          record data is passed directly to the job. Jobs can also create new entity records
+          using the <code className="text-forge-400">creates:</code> clause with the built-in{" "}
+          <code className="text-forge-400">entity.create</code> capability. This is reliable for
+          most use cases but jobs are lost if the server restarts while they're queued. Persistent
+          queues and needs resolution are coming in Phase 2 and 3.
         </p>
       </div>
     </DocsLayout>

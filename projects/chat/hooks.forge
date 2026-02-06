@@ -2,6 +2,7 @@
 
 hook Message.after_create {
   enqueue notify_channel
+  enqueue log_message_sent
 }
 
 hook Thread.after_create {
