@@ -2,6 +2,26 @@
 
 > **FORGE compiles application intent (data + rules + access + views) into a sealed runtime that cannot violate your business logic.**
 
+## IMPORTANT: Read Current Work Journal First
+
+Before starting ANY implementation work, **always read**:
+- `docs/journal_current_work.md` — Active implementation log with current status, ownership, and decisions
+- `docs/completed_work.md` — Archive of completed features
+
+When working on features:
+1. Check the journal for current status before touching any code
+2. Update the journal when starting work (mark as in_progress + your role)
+3. Update the journal when completing work (mark as done + list files changed)
+4. When ALL tasks for a feature are done, move the entry to `completed_work.md`
+
+## Roadmap
+
+The v0.3.0 release roadmap lives in `docs/roadmap/`. Each document is a self-contained implementation plan:
+- `docs/roadmap/README.md` — Master index with critical path and execution order
+- 10 detailed implementation documents (01 through 10)
+
+---
+
 ## Project Vision
 
 FORGE is NOT a framework. It is a **compiler + sealed runtime** for applications. Born from the insight that most software is "the same boring garbage rewritten forever," FORGE eliminates:

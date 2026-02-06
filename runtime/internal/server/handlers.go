@@ -120,8 +120,9 @@ func rowToMap(cols []db.FieldDescription, values []any) map[string]interface{} {
 // handleList handles GET /api/entities/{entity}
 func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 	entityName := chi.URLParam(r, "entity")
+	artifact := s.getArtifact()
 
-	entity, ok := s.artifact.Entities[entityName]
+	entity, ok := artifact.Entities[entityName]
 	if !ok {
 		s.respondError(w, http.StatusNotFound, Message{
 			Code:    "ENTITY_NOT_FOUND",
@@ -168,8 +169,9 @@ func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 	entityName := chi.URLParam(r, "entity")
 	id := chi.URLParam(r, "id")
+	artifact := s.getArtifact()
 
-	entity, ok := s.artifact.Entities[entityName]
+	entity, ok := artifact.Entities[entityName]
 	if !ok {
 		s.respondError(w, http.StatusNotFound, Message{
 			Code:    "ENTITY_NOT_FOUND",
@@ -231,8 +233,9 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 // handleCreate handles POST /api/entities/{entity}
 func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	entityName := chi.URLParam(r, "entity")
+	artifact := s.getArtifact()
 
-	entity, ok := s.artifact.Entities[entityName]
+	entity, ok := artifact.Entities[entityName]
 	if !ok {
 		s.respondError(w, http.StatusNotFound, Message{
 			Code:    "ENTITY_NOT_FOUND",
@@ -346,6 +349,9 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	// Broadcast to subscribed clients
 	s.broadcastEntityChange(entityName, "create", record)
 
+	// Evaluate hooks (fire-and-forget)
+	s.evaluateHooks(entityName, "create", record)
+
 	s.respond(w, http.StatusCreated, record)
 }
 
@@ -353,8 +359,9 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	entityName := chi.URLParam(r, "entity")
 	id := chi.URLParam(r, "id")
+	artifact := s.getArtifact()
 
-	entity, ok := s.artifact.Entities[entityName]
+	entity, ok := artifact.Entities[entityName]
 	if !ok {
 		s.respondError(w, http.StatusNotFound, Message{
 			Code:    "ENTITY_NOT_FOUND",
@@ -468,6 +475,9 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	// Broadcast to subscribed clients
 	s.broadcastEntityChange(entityName, "update", record)
 
+	// Evaluate hooks (fire-and-forget)
+	s.evaluateHooks(entityName, "update", record)
+
 	s.respond(w, http.StatusOK, record)
 }
 
@@ -475,8 +485,9 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 	entityName := chi.URLParam(r, "entity")
 	id := chi.URLParam(r, "id")
+	artifact := s.getArtifact()
 
-	entity, ok := s.artifact.Entities[entityName]
+	entity, ok := artifact.Entities[entityName]
 	if !ok {
 		s.respondError(w, http.StatusNotFound, Message{
 			Code:    "ENTITY_NOT_FOUND",
@@ -519,14 +530,18 @@ func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
 	// Broadcast to subscribed clients
 	s.broadcastEntityChange(entityName, "delete", map[string]interface{}{"id": id})
 
+	// Evaluate hooks (fire-and-forget)
+	s.evaluateHooks(entityName, "delete", map[string]interface{}{"id": id})
+
 	s.respond(w, http.StatusOK, nil)
 }
 
 // handleView handles GET /api/views/{view}
 func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 	viewName := chi.URLParam(r, "view")
+	artifact := s.getArtifact()
 
-	view, ok := s.artifact.Views[viewName]
+	view, ok := artifact.Views[viewName]
 	if !ok {
 		s.respondError(w, http.StatusNotFound, Message{
 			Code:    "VIEW_NOT_FOUND",
@@ -536,7 +551,7 @@ func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get the source entity to build a proper query
-	entity, ok := s.artifact.Entities[view.Source]
+	entity, ok := artifact.Entities[view.Source]
 	if !ok {
 		s.respondError(w, http.StatusInternalServerError, Message{
 			Code:    "SOURCE_NOT_FOUND",
@@ -588,8 +603,9 @@ func (s *Server) buildViewQuery(view *ViewSchema, entity *EntitySchema) string {
 // handleAction handles POST /api/actions/{action}
 func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 	actionName := chi.URLParam(r, "action")
+	artifact := s.getArtifact()
 
-	action, ok := s.artifact.Actions[actionName]
+	action, ok := artifact.Actions[actionName]
 	if !ok {
 		s.respondError(w, http.StatusNotFound, Message{
 			Code:    "ACTION_NOT_FOUND",
@@ -611,7 +627,7 @@ func (s *Server) handleAction(w http.ResponseWriter, r *http.Request) {
 	s.logger.Info("action.started", "action", actionName, "input", input)
 
 	// Get the entity for this action
-	entity, ok := s.artifact.Entities[action.InputEntity]
+	entity, ok := artifact.Entities[action.InputEntity]
 	if !ok {
 		s.respondError(w, http.StatusInternalServerError, Message{
 			Code:    "ENTITY_NOT_FOUND",
@@ -753,6 +769,9 @@ func (s *Server) executeCreateAction(ctx context.Context, w http.ResponseWriter,
 
 	// Broadcast to subscribed clients
 	s.broadcastEntityChange(entity.Name, "create", record)
+
+	// Evaluate hooks (fire-and-forget)
+	s.evaluateHooks(entity.Name, "create", record)
 
 	s.respond(w, http.StatusCreated, record)
 }
@@ -909,6 +928,9 @@ func (s *Server) executeUpdateAction(ctx context.Context, w http.ResponseWriter,
 	// Broadcast to subscribed clients
 	s.broadcastEntityChange(entity.Name, "update", record)
 
+	// Evaluate hooks (fire-and-forget)
+	s.evaluateHooks(entity.Name, "update", record)
+
 	s.respond(w, http.StatusOK, record)
 }
 
@@ -957,6 +979,9 @@ func (s *Server) executeDeleteAction(ctx context.Context, w http.ResponseWriter,
 
 	// Broadcast deletion
 	s.broadcastEntityChange(entity.Name, "delete", map[string]interface{}{"id": idStr})
+
+	// Evaluate hooks (fire-and-forget)
+	s.evaluateHooks(entity.Name, "delete", map[string]interface{}{"id": idStr})
 
 	s.respond(w, http.StatusOK, map[string]interface{}{
 		"deleted": true,
@@ -1326,6 +1351,9 @@ func (s *Server) executeWebhookAction(ctx context.Context, action *ActionSchema,
 
 	// Broadcast the created record
 	s.broadcastEntityChange(entity.Name, "create", record)
+
+	// Evaluate hooks (fire-and-forget)
+	s.evaluateHooks(entity.Name, "create", record)
 
 	return nil
 }

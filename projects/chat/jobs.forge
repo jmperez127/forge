@@ -3,11 +3,17 @@
 job notify_channel {
   input: Message
   needs: Message.channel.members
-  effect: notification.send
+  effect: email.send
+}
+
+job notify_parent_author {
+  input: Thread
+  needs: Thread.parent.author
+  effect: email.send
 }
 
 job create_default_channel {
   input: Workspace
   needs: Workspace.owner
-  effect: create_channel
+  effect: email.send
 }

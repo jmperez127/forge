@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/forge-lang/forge/runtime/internal/provider"
 )
 
 // DevInfo holds all development info data
@@ -725,11 +726,40 @@ func (s *Server) handleDevViews(w http.ResponseWriter, r *http.Request) {
 	s.respondDevJSON(w, map[string]interface{}{"views": s.artifact.Views})
 }
 
-// handleDevJobs returns jobs and hooks
+// handleDevJobs returns jobs, hooks, executor status, and provider info
 func (s *Server) handleDevJobs(w http.ResponseWriter, r *http.Request) {
+	// Build executor info
+	executorStatus := "stopped"
+	executorWorkers := 0
+	executorQueueCapacity := 0
+	executorQueueLength := 0
+	if s.executor != nil {
+		executorStatus = "running"
+		executorWorkers = s.executor.Workers()
+		executorQueueCapacity = s.executor.QueueCapacity()
+		executorQueueLength = s.executor.QueueLength()
+	}
+
+	// Build provider info from global registry
+	registry := provider.Global()
+	registeredProviders := registry.Providers()
+	capabilities := registry.Capabilities()
+	sort.Strings(registeredProviders)
+	sort.Strings(capabilities)
+
 	data := map[string]interface{}{
 		"jobs":  s.artifact.Jobs,
 		"hooks": s.artifact.Hooks,
+		"executor": map[string]interface{}{
+			"workers":        executorWorkers,
+			"queue_capacity": executorQueueCapacity,
+			"queue_length":   executorQueueLength,
+			"status":         executorStatus,
+		},
+		"providers": map[string]interface{}{
+			"registered":   registeredProviders,
+			"capabilities": capabilities,
+		},
 	}
 
 	if wantsHTML(r) {

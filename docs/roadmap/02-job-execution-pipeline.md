@@ -1,6 +1,6 @@
 # Job Execution Pipeline - Implementation Roadmap
 
-**Status**: Not Started
+**Status**: Phase 1 - COMPLETE
 **Priority**: Critical - Core feature gap
 **Estimated Effort**: 3 sprints (Phase 1: 1 sprint, Phase 2: 1 sprint, Phase 3: 1 sprint)
 
@@ -137,7 +137,7 @@ Goal: Jobs actually run. After an action commits, hooks fire, jobs execute their
 
 #### TODO 1.1: Wire Provider Registry Initialization
 
-- [ ] **Initialize the global provider registry with config from `forge.runtime.toml` during server startup.**
+- [x] **Initialize the global provider registry with config from `forge.runtime.toml` during server startup.**
 
 **Files to modify:**
 - `runtime/internal/server/server.go`
@@ -181,7 +181,7 @@ logger.Info("provider registry initialized",
 
 #### TODO 1.2: Wire Job Executor to Server
 
-- [ ] **Add `*jobs.Executor` to Server struct, start it on server init, stop it on shutdown.**
+- [x] **Add `*jobs.Executor` to Server struct, start it on server init, stop it on shutdown.**
 
 **Files to modify:**
 - `runtime/internal/server/server.go`
@@ -297,7 +297,7 @@ func (s *Server) Close() error {
 
 #### TODO 1.3: Implement Hook Evaluation After Action Commit
 
-- [ ] **After every successful action (create/update/delete), evaluate matching hooks from the artifact and enqueue their jobs.**
+- [x] **After every successful action (create/update/delete), evaluate matching hooks from the artifact and enqueue their jobs.**
 
 **Files to modify:**
 - `runtime/internal/server/handlers.go`

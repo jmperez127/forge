@@ -19,6 +19,9 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/forge-lang/forge/runtime/internal/config"
 	"github.com/forge-lang/forge/runtime/internal/db"
+	"github.com/forge-lang/forge/runtime/internal/jobs"
+	"github.com/forge-lang/forge/runtime/internal/provider"
+	_ "github.com/forge-lang/forge/runtime/internal/provider/builtin" // register built-in providers
 	"github.com/forge-lang/forge/runtime/internal/security"
 )
 
@@ -44,6 +47,7 @@ type Server struct {
 	logger       *slog.Logger
 	watcher      *ArtifactWatcher
 	turnstile    *security.TurnstileVerifier
+	executor     *jobs.Executor // Job execution engine
 }
 
 // Artifact represents the loaded runtime artifact.
@@ -263,6 +267,25 @@ func New(cfg *Config) (*Server, error) {
 		logger.Info("schema ready", "applied", result.Applied, "skipped", result.Skipped)
 	}
 
+	// Initialize provider registry with config from forge.runtime.toml
+	providerConfigs := runtimeConf.GetProviderConfigs()
+	registry := provider.Global()
+	if err := registry.Init(providerConfigs); err != nil {
+		logger.Warn("provider registry initialization failed", "error", err)
+		// Non-fatal: jobs that need uninitialized providers will fail at execution time
+	}
+	logger.Info("provider registry initialized",
+		"providers", registry.Providers(),
+		"capabilities", registry.Capabilities(),
+	)
+
+	// Create and start job executor
+	workerCount := runtimeConf.Jobs.Concurrency
+	if workerCount <= 0 {
+		workerCount = 10
+	}
+	executor := jobs.NewExecutor(registry, logger, workerCount)
+
 	s := &Server{
 		config:      cfg,
 		runtimeConf: runtimeConf,
@@ -271,6 +294,7 @@ func New(cfg *Config) (*Server, error) {
 		router:      chi.NewRouter(),
 		hub:         NewHub(),
 		logger:      logger,
+		executor:    executor,
 	}
 
 	// Initialize Turnstile verifier if configured
@@ -379,10 +403,34 @@ func (s *Server) setupRoutes() {
 	r.Get("/debug/artifact", s.handleArtifact)
 }
 
+// drainJobResults reads from the executor results channel and logs outcomes.
+func (s *Server) drainJobResults() {
+	for result := range s.executor.Results() {
+		if result.Success {
+			s.logger.Info("job.completed",
+				"job_id", result.JobID,
+				"duration_ms", result.Duration.Milliseconds(),
+			)
+		} else {
+			s.logger.Error("job.failed",
+				"job_id", result.JobID,
+				"error", result.Error,
+				"duration_ms", result.Duration.Milliseconds(),
+			)
+		}
+	}
+}
+
 // Run starts the server.
 func (s *Server) Run() error {
 	// Start WebSocket hub
 	go s.hub.Run()
+
+	// Start job executor and result drain
+	if s.executor != nil {
+		s.executor.Start()
+		go s.drainJobResults()
+	}
 
 	// Start artifact watcher for hot reload (development mode only)
 	s.startWatcher()
@@ -407,6 +455,12 @@ func (s *Server) Run() error {
 
 		if err := srv.Shutdown(ctx); err != nil {
 			s.logger.Error("server shutdown error", "error", err)
+		}
+
+		// Stop job executor (drain in-flight jobs)
+		if s.executor != nil {
+			s.logger.Info("stopping job executor")
+			s.executor.Stop()
 		}
 
 		// Close database connection
@@ -434,6 +488,9 @@ func (s *Server) Run() error {
 func (s *Server) Close() error {
 	if s.watcher != nil {
 		s.watcher.Stop()
+	}
+	if s.executor != nil {
+		s.executor.Stop()
 	}
 	if s.db != nil {
 		return s.db.Close()

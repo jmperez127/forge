@@ -4,6 +4,10 @@ hook Message.after_create {
   enqueue notify_channel
 }
 
+hook Thread.after_create {
+  enqueue notify_parent_author
+}
+
 hook Workspace.after_create {
   enqueue create_default_channel
 }

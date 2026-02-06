@@ -52,6 +52,8 @@ type Executor struct {
 	wg sync.WaitGroup
 	// done signals shutdown
 	done chan struct{}
+	// stopOnce ensures Stop() is safe to call multiple times
+	stopOnce sync.Once
 }
 
 // NewExecutor creates a new job executor.
@@ -79,11 +81,17 @@ func (e *Executor) Start() {
 	e.logger.Info("job executor started", "workers", e.workers)
 }
 
-// Stop gracefully stops the executor.
+// Stop gracefully stops the executor. Safe to call multiple times.
+// It signals all workers to finish, waits for them to drain, and then
+// closes the results channel so that any consumer ranging over Results()
+// will terminate cleanly.
 func (e *Executor) Stop() {
-	close(e.done)
-	e.wg.Wait()
-	e.logger.Info("job executor stopped")
+	e.stopOnce.Do(func() {
+		close(e.done)
+		e.wg.Wait()
+		close(e.results)
+		e.logger.Info("job executor stopped")
+	})
 }
 
 // Enqueue adds a job to the execution queue.
@@ -116,6 +124,21 @@ func (e *Executor) Enqueue(job *Job) error {
 // Results returns a channel for receiving job results.
 func (e *Executor) Results() <-chan *JobResult {
 	return e.results
+}
+
+// Workers returns the number of concurrent workers.
+func (e *Executor) Workers() int {
+	return e.workers
+}
+
+// QueueCapacity returns the total capacity of the job queue.
+func (e *Executor) QueueCapacity() int {
+	return cap(e.queue)
+}
+
+// QueueLength returns the current number of pending jobs in the queue.
+func (e *Executor) QueueLength() int {
+	return len(e.queue)
 }
 
 // worker processes jobs from the queue.
@@ -183,11 +206,25 @@ func (e *Executor) execute(job *Job) *JobResult {
 				"max_attempts", job.MaxAttempts,
 				"error", err,
 			)
-			// Re-enqueue for retry with backoff
+			// Re-enqueue for retry with backoff.
+			// Capture attempts before spawning goroutine to avoid a data race
+			// on the Job struct (which may be read by another worker).
+			attempts := job.Attempts
 			go func() {
-				backoff := time.Duration(job.Attempts*job.Attempts) * time.Second
-				time.Sleep(backoff)
-				e.Enqueue(job)
+				backoff := time.Duration(attempts*attempts) * time.Second
+				select {
+				case <-time.After(backoff):
+					if err := e.Enqueue(job); err != nil {
+						e.logger.Warn("retry enqueue failed",
+							"job_id", job.ID,
+							"error", err,
+						)
+					}
+				case <-e.done:
+					e.logger.Info("retry cancelled, executor shutting down",
+						"job_id", job.ID,
+					)
+				}
 			}()
 		} else {
 			e.logger.Error("job failed, max attempts reached",
