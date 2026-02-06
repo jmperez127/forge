@@ -34,6 +34,9 @@ type Config struct {
 	// Auth configuration for identity management
 	Auth AuthConfig `toml:"auth"`
 
+	// Security configuration for bot protection, rate limiting, and CAPTCHA
+	Security SecurityConfig `toml:"security"`
+
 	// Providers holds external integration configurations.
 	// Each key is a provider name (e.g., "twilio", "stripe", "generic").
 	// Values are provider-specific key-value configs.
@@ -145,6 +148,41 @@ type JWTConfig struct {
 
 	// RefreshExpiryHours for refresh token validity (default 168 = 7 days)
 	RefreshExpiryHours int `toml:"refresh_expiry_hours"`
+}
+
+// SecurityConfig holds bot protection and rate limiting configuration.
+type SecurityConfig struct {
+	Enabled      *bool              `toml:"enabled"`
+	RateLimit    RateLimitConfig    `toml:"rate_limit"`
+	Registration RegistrationConfig `toml:"registration"`
+	Turnstile    TurnstileConfig    `toml:"turnstile"`
+	BotFilter    BotFilterConfig    `toml:"bot_filter"`
+}
+
+// RateLimitConfig holds rate limiting configuration for auth and API endpoints.
+type RateLimitConfig struct {
+	Enabled    *bool `toml:"enabled"`
+	AuthWindow int   `toml:"auth_window"`
+	AuthBurst  int   `toml:"auth_burst"`
+	APIWindow  int   `toml:"api_window"`
+	APIBurst   int   `toml:"api_burst"`
+}
+
+// RegistrationConfig holds user registration policy configuration.
+type RegistrationConfig struct {
+	Mode string `toml:"mode"` // "open", "turnstile"
+}
+
+// TurnstileConfig holds Cloudflare Turnstile CAPTCHA configuration.
+type TurnstileConfig struct {
+	SiteKey      string `toml:"site_key"`
+	SecretKey    string `toml:"secret_key"`
+	LoginEnabled bool   `toml:"login_enabled"`
+}
+
+// BotFilterConfig holds bot detection and filtering configuration.
+type BotFilterConfig struct {
+	Enabled *bool `toml:"enabled"`
 }
 
 // EnvironmentOverride holds environment-specific configuration overrides.
@@ -313,6 +351,32 @@ func (c *Config) applyDefaults() {
 	if c.Auth.Password.MinLength == 0 {
 		c.Auth.Password.MinLength = defaults.Auth.Password.MinLength
 	}
+
+	// Security defaults
+	if c.Security.Enabled == nil {
+		c.Security.Enabled = boolPtr(true)
+	}
+	if c.Security.RateLimit.Enabled == nil {
+		c.Security.RateLimit.Enabled = c.Security.Enabled
+	}
+	if c.Security.RateLimit.AuthWindow == 0 {
+		c.Security.RateLimit.AuthWindow = 300
+	}
+	if c.Security.RateLimit.AuthBurst == 0 {
+		c.Security.RateLimit.AuthBurst = 10
+	}
+	if c.Security.RateLimit.APIWindow == 0 {
+		c.Security.RateLimit.APIWindow = 60
+	}
+	if c.Security.RateLimit.APIBurst == 0 {
+		c.Security.RateLimit.APIBurst = 100
+	}
+	if c.Security.Registration.Mode == "" {
+		c.Security.Registration.Mode = "open"
+	}
+	if c.Security.BotFilter.Enabled == nil {
+		c.Security.BotFilter.Enabled = c.Security.Enabled
+	}
 }
 
 // applyOverride applies environment-specific overrides.
@@ -388,6 +452,7 @@ func (c *Config) ResolveSecrets() {
 	c.Email.Password = resolveEnvValue(c.Email.Password)
 	c.Jobs.URL = resolveEnvValue(c.Jobs.URL)
 	c.Auth.JWT.Secret = resolveEnvValue(c.Auth.JWT.Secret)
+	c.Security.Turnstile.SecretKey = resolveEnvValue(c.Security.Turnstile.SecretKey)
 
 	// Resolve OAuth provider secrets
 	for name, provider := range c.Auth.OAuth.Providers {
@@ -414,6 +479,11 @@ func (c *Config) GetProviderConfigs() map[string]map[string]string {
 		result[name] = map[string]string(providerConf)
 	}
 	return result
+}
+
+// boolPtr returns a pointer to the given bool value.
+func boolPtr(b bool) *bool {
+	return &b
 }
 
 // resolveEnvValue resolves "env:VAR_NAME" to the actual environment variable value.
